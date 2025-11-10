@@ -20,9 +20,9 @@ interface TradeDetailPageProps {
 }
 
 const DetailStatCard: React.FC<{ title: string; value: string; valueColor?: string; helpText?: string }> = ({ title, value, valueColor = 'text-white', helpText }) => (
-    <div className="glass-card p-5 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 hover:scale-[1.02]">
+    <div className="glass-card p-3 md:p-5 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 hover:scale-[1.02]">
         <h4 className="text-xs font-bold text-[#A0A0A0] uppercase tracking-wider mb-2">{title}</h4>
-        <p className={`text-3xl font-extrabold ${valueColor} mb-1`}>{value}</p>
+        <p className={`text-2xl md:text-3xl font-extrabold ${valueColor} mb-1`}>{value}</p>
         {helpText && <p className="text-xs text-[#A0A0A0] mt-2">{helpText}</p>}
     </div>
 );
@@ -44,16 +44,17 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-6 md:space-y-8 animate-fade-in">
         <div className="flex justify-between items-start">
-            <div>
+            <div className="flex-1">
                  <button onClick={onBack} className="text-sm text-[#6A5ACD] hover:text-[#8b5cf6] hover:underline mb-4 font-semibold transition-colors duration-200">
                     &larr; {backButtonText}
                 </button>
-                <div className="flex items-center gap-4">
-                    <h1 className="text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
+                <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4">
+                    <h1 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
                       {trade.asset}
                     </h1>
+                    <div className="flex items-center gap-3">
                      <button 
                         onClick={() => onOpenTradeForm(trade)}
                         className="text-[#A0A0A0] hover:text-[#6A5ACD] hover:bg-[#6A5ACD]/10 p-2 rounded-lg transition-all duration-200"
@@ -61,19 +62,20 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                     >
                         <EditIcon />
                     </button>
-                    <span className={`px-4 py-2 text-sm font-bold rounded-full ${statusColorMap[trade.status]} transition-all duration-200 hover:scale-105`}>
+                    <span className={`px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-bold rounded-full ${statusColorMap[trade.status]} transition-all duration-200 hover:scale-105`}>
                         {trade.status.toUpperCase()}
                     </span>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div className="mb-6">
-            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-3">
+        <div className="mb-4 md:mb-6">
+            <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-4 flex items-center gap-3">
               <TrendingUpIcon />
               Trade Analytics
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
                 <DetailStatCard 
                     title="R-Multiple" 
                     value={stats.isClosed ? `${stats.rMultiple.toFixed(2)}R` : 'N/A'}
@@ -111,9 +113,9 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
             </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-5">
-                 <h2 className="text-2xl font-bold text-white flex items-center gap-3"><TrendingDownIcon /> Execution Log</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+            <div className="space-y-4 md:space-y-5">
+                 <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-3"><TrendingDownIcon /> Execution Log</h2>
                 {/* Entries */}
                 <div className="glass-card p-4 rounded-xl">
                     <h3 className="font-bold text-[#E0E0E0] mb-3">Entries</h3>
@@ -161,8 +163,8 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                     </ul>
                 </div>
             </div>
-            <div className="space-y-5">
-                 <h2 className="text-2xl font-bold text-white flex items-center gap-3"><DocumentTextIcon /> Trade Analysis & Notes</h2>
+            <div className="space-y-4 md:space-y-5">
+                 <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-3"><DocumentTextIcon /> Trade Analysis & Notes</h2>
                  <RichTextEditor content={trade.notes} onSave={handleNotesSave} />
             </div>
         </div>

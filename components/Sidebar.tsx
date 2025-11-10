@@ -21,7 +21,7 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ strategies, activeView, navigateTo, onNewStrategy, currentUser, onLogin, onProfile, onSettings }) => {
   return (
-    <aside className="w-64 glass-sidebar p-4 flex flex-col relative overflow-hidden">
+    <aside className="hidden lg:flex w-64 glass-sidebar p-4 flex-col relative overflow-hidden">
       {/* Subtle background pattern */}
       <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{
         backgroundImage: `radial-gradient(circle at 2px 2px, white 1px, transparent 0)`,

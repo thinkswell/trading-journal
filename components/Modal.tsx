@@ -22,12 +22,12 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, size = 'md' })
   if (!isOpen) return null;
 
   const sizeClasses = {
-    sm: 'max-w-sm',
-    md: 'max-w-lg',
-    lg: 'max-w-2xl',
-    xl: 'max-w-3xl',
-    '2xl': 'max-w-4xl',
-    '4xl': 'max-w-6xl',
+    sm: 'md:max-w-sm',
+    md: 'md:max-w-lg',
+    lg: 'md:max-w-2xl',
+    xl: 'md:max-w-3xl',
+    '2xl': 'md:max-w-4xl',
+    '4xl': 'md:max-w-6xl',
   };
 
   return (
@@ -37,11 +37,13 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, size = 'md' })
       style={{ animation: 'fadeIn 0.2s ease-out' }}
     >
       <div
-        className={`glass-modal rounded-xl shadow-lg p-6 w-full ${sizeClasses[size]} mx-4 animate-scale-in`}
+        className={`glass-modal rounded-none md:rounded-xl shadow-lg p-2 md:p-6 w-full h-full md:h-auto max-w-full md:max-h-[90vh] flex flex-col md:block ${sizeClasses[size]} md:mx-4 animate-scale-in md:overflow-y-auto`}
         onClick={(e) => e.stopPropagation()}
         style={{ animation: 'scaleIn 0.2s ease-out' }}
       >
-        {children}
+        <div className="flex-1 overflow-y-auto md:overflow-visible md:flex-none md:block">
+          {children}
+        </div>
       </div>
     </div>
   );

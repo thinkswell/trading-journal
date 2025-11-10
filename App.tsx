@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Strategy, Trade } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import Sidebar from './components/Sidebar';
+import BottomNav from './components/BottomNav';
 import Dashboard from './components/Dashboard';
 import StrategyView from './components/StrategyView';
 import TradeDetailPage from './components/TradeDetailPage';
@@ -308,7 +309,7 @@ const AppContent: React.FC = () => {
   const strategyIdForForm = editingTrade?.strategyId || (activeView !== 'dashboard' && !activeView.startsWith('trade/') && activeView !== 'profile' ? activeView : undefined);
 
   return (
-    <div className="flex h-screen text-white font-sans" style={{ backgroundColor: '#121212' }}>
+    <div className="flex flex-col md:flex-row h-screen text-white font-sans" style={{ backgroundColor: '#121212' }}>
       <Sidebar
         strategies={strategies}
         activeView={activeView}
@@ -319,9 +320,19 @@ const AppContent: React.FC = () => {
         onProfile={() => navigateTo('profile')}
         onSettings={() => setIsSettingsModalOpen(true)}
       />
-      <main className="flex-1 p-6 overflow-y-auto">
+      <main className="flex-1 p-4 md:p-6 overflow-y-auto pb-24 md:pb-6">
         {renderContent()}
       </main>
+      <BottomNav
+        strategies={strategies}
+        activeView={activeView}
+        navigateTo={navigateTo}
+        onNewStrategy={() => setIsNewStrategyModalOpen(true)}
+        currentUser={currentUser}
+        onLogin={() => setIsAuthModalOpen(true)}
+        onProfile={() => navigateTo('profile')}
+        onSettings={() => setIsSettingsModalOpen(true)}
+      />
 
       <Modal isOpen={isNewStrategyModalOpen} onClose={() => setIsNewStrategyModalOpen(false)}>
         <div className="p-2">

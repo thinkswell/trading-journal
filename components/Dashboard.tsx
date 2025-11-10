@@ -10,6 +10,8 @@ import { ScaleIcon } from './icons/ScaleIcon';
 import { ReceiptPercentIcon } from './icons/ReceiptPercentIcon';
 import { TrendingUpIcon } from './icons/TrendingUpIcon';
 import { CalculatorIcon } from './icons/CalculatorIcon';
+import { PinIcon } from './icons/PinIcon';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface DashboardProps {
   allTrades: Trade[];
@@ -19,10 +21,16 @@ interface DashboardProps {
   onDeleteTrade: (tradeId: string, strategyId: string) => void;
 }
 
+type StatKey = 'totalCapital' | 'totalPL' | 'gainOnCapital' | 'amountInvested' | 'riskOnCapital' | 'winRate' | 'profitFactor' | 'totalTrades';
+
+const DEFAULT_PINNED_STATS: StatKey[] = ['totalCapital', 'gainOnCapital'];
+
 const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo, onOpenTradeForm, onDeleteTrade }) => {
   const [assetFilter, setAssetFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<TradeStatus | 'all'>('all');
   const [strategyFilter, setStrategyFilter] = useState<string>('all');
+  const [pinnedStats, setPinnedStats] = useLocalStorage<StatKey[]>('dashboard-pinned-stats', DEFAULT_PINNED_STATS);
+  const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const { currency } = useSettings();
 
   const filteredTrades = useMemo(() => {
@@ -93,30 +101,116 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
     }
   }
 
+  // Define all stats with their keys
+  const allStats = useMemo(() => {
+    return [
+      { key: 'totalCapital' as StatKey, title: 'Total Capital', value: formatCurrency(stats.totalCapital, currency), icon: <MoneyIcon />, isPositive: undefined },
+      { key: 'totalPL' as StatKey, title: 'Total P/L', value: formatCurrency(stats.totalPL, currency), icon: <MoneyIcon />, isPositive: stats.totalPL >= 0 },
+      { key: 'gainOnCapital' as StatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0 },
+      { key: 'amountInvested' as StatKey, title: 'Amount Invested', value: formatCurrency(stats.amountInvested, currency), icon: <ScaleIcon />, isPositive: undefined },
+      { key: 'riskOnCapital' as StatKey, title: '% Risk on Capital', value: `${stats.riskOnCapital.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskOnCapital < 5 },
+      { key: 'winRate' as StatKey, title: 'Win Rate', value: `${stats.winRate.toFixed(1)}%`, icon: <TrendingUpIcon />, isPositive: stats.winRate >= 50 },
+      { key: 'profitFactor' as StatKey, title: 'Profit Factor', value: stats.profitFactor.toFixed(2), icon: <ScaleIcon />, isPositive: stats.profitFactor >= 1 },
+      { key: 'totalTrades' as StatKey, title: 'Total Trades', value: stats.totalTrades.toString(), icon: <CalculatorIcon />, isPositive: undefined },
+    ];
+  }, [stats, currency]);
+
+  // Separate stats into pinned and unpinned
+  const pinnedStatsList = useMemo(() => {
+    return allStats.filter(stat => pinnedStats.includes(stat.key));
+  }, [allStats, pinnedStats]);
+
+  const unpinnedStatsList = useMemo(() => {
+    return allStats.filter(stat => !pinnedStats.includes(stat.key));
+  }, [allStats, pinnedStats]);
+
+  const handlePinStat = (statKey: StatKey) => {
+    if (pinnedStats.includes(statKey)) {
+      // Unpin
+      setPinnedStats(pinnedStats.filter(key => key !== statKey));
+    } else {
+      // Pin (max 2)
+      if (pinnedStats.length < 2) {
+        setPinnedStats([...pinnedStats, statKey]);
+      } else {
+        // Replace the first pinned stat
+        setPinnedStats([pinnedStats[1], statKey]);
+      }
+    }
+  };
+
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-6 md:space-y-8 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
+        <h1 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
           Dashboard
         </h1>
       </div>
       
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard icon={<MoneyIcon />} title="Total Capital" value={formatCurrency(stats.totalCapital, currency)} />
-        <StatCard icon={<MoneyIcon />} title="Total P/L" value={formatCurrency(stats.totalPL, currency)} isPositive={stats.totalPL >= 0} />
-        <StatCard icon={<TrendingUpIcon />} title="% Gain on Capital" value={`${stats.gainOnCapital.toFixed(2)}%`} isPositive={stats.gainOnCapital >= 0} />
-        <StatCard icon={<ScaleIcon />} title="Amount Invested" value={formatCurrency(stats.amountInvested, currency)} />
-        <StatCard icon={<ReceiptPercentIcon />} title="% Risk on Capital" value={`${stats.riskOnCapital.toFixed(2)}%`} isPositive={stats.riskOnCapital < 5} />
-        <StatCard icon={<TrendingUpIcon />} title="Win Rate" value={`${stats.winRate.toFixed(1)}%`} isPositive={stats.winRate >= 50}/>
-        <StatCard icon={<ScaleIcon />} title="Profit Factor" value={stats.profitFactor.toFixed(2)} isPositive={stats.profitFactor >= 1} />
-        <StatCard icon={<CalculatorIcon />} title="Total Trades" value={stats.totalTrades.toString()} />
+      {/* Desktop: Show all stats in grid */}
+      <div className="hidden md:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {allStats.map(stat => (
+          <StatCard key={stat.key} icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+        ))}
       </div>
 
-      <div className="glass-card p-6 rounded-xl shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-white">All Trades</h2>
+      {/* Mobile: Show pinned stats at top, rest in accordion */}
+      <div className="md:hidden space-y-4">
+        {/* Pinned Stats */}
+        <div className="flex flex-col gap-4">
+          {pinnedStatsList.map(stat => (
+            <div key={stat.key} className="relative">
+              <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+              <button
+                onClick={() => handlePinStat(stat.key)}
+                className="absolute top-2 right-2 p-1.5 rounded-lg bg-[#6A5ACD]/20 hover:bg-[#6A5ACD]/30 text-[#6A5ACD] transition-all duration-200"
+                aria-label="Unpin stat"
+              >
+                <PinIcon className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+
+        {/* Accordion for unpinned stats */}
+        {unpinnedStatsList.length > 0 && (
+          <div className="glass-card rounded-xl shadow-sm overflow-hidden">
+            <button
+              onClick={() => setIsAccordionOpen(!isAccordionOpen)}
+              className="w-full flex items-center justify-between p-4 text-left hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+            >
+              <span className="text-white font-semibold">
+                Other Stats ({unpinnedStatsList.length})
+              </span>
+              <span className={`text-[#A0A0A0] transition-transform duration-200 ${isAccordionOpen ? 'rotate-180' : ''}`}>
+                ▼
+              </span>
+            </button>
+            {isAccordionOpen && (
+              <div className="grid grid-cols-2 gap-4 p-4 border-t border-[rgba(255,255,255,0.1)]">
+                {unpinnedStatsList.map(stat => (
+                  <div key={stat.key} className="relative">
+                    <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+                    <button
+                      onClick={() => handlePinStat(stat.key)}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] hover:bg-[#6A5ACD]/30 text-[#A0A0A0] hover:text-[#6A5ACD] transition-all duration-200"
+                      aria-label="Pin stat"
+                    >
+                      <PinIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="glass-card p-4 md:p-6 rounded-xl shadow-sm">
+        <div className="flex items-center justify-between mb-4 md:mb-6">
+          <h2 className="text-xl md:text-2xl font-bold text-white">All Trades</h2>
+        </div>
+        <div className="flex flex-col md:grid md:grid-cols-3 gap-4 mb-4 md:mb-6">
           <input 
             type="text" 
             placeholder="Filter by Asset (e.g. AAPL)" 

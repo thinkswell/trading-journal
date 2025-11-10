@@ -88,10 +88,10 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
 
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 md:space-y-8 animate-fade-in">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4">
-            <h1 className="text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
+            <h1 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
               {strategy.name}
             </h1>
             <button 
@@ -104,7 +104,7 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
         </div>
         <button 
           onClick={handleNewTrade}
-          className="flex items-center gap-2 bg-gradient-to-r from-[#6A5ACD] to-[#8b5cf6] hover:from-[#8b5cf6] hover:to-[#6A5ACD] text-white font-bold py-3 px-6 rounded-lg 
+          className="w-full md:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-[#6A5ACD] to-[#8b5cf6] hover:from-[#8b5cf6] hover:to-[#6A5ACD] text-white font-bold py-3 px-6 rounded-lg 
                     shadow-sm shadow-[#6A5ACD]/10 hover:shadow-md hover:shadow-[#6A5ACD]/15 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
         >
           <PlusIcon />
@@ -112,7 +112,7 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
         </button>
       </div>
 
-       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <StatCard icon={<MoneyIcon />} title="Current Capital" value={formatCurrency(stats.currentCapital, currency)} />
         <StatCard icon={<ScaleIcon />} title="Strategy P/L" value={formatCurrency(stats.totalPL, currency)} isPositive={stats.totalPL >= 0} />
         <StatCard icon={<TrendingUpIcon />} title="% Gain on Capital" value={`${stats.gainOnCapital.toFixed(2)}%`} isPositive={stats.gainOnCapital >= 0} />
@@ -122,8 +122,8 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
         <StatCard icon={<CalculatorIcon />} title="Total Trades" value={stats.totalTrades.toString()} />
       </div>
 
-      <div className="glass-card p-6 rounded-xl shadow-sm">
-         <h2 className="text-2xl font-bold mb-6 text-white">Trades</h2>
+      <div className="glass-card p-4 md:p-6 rounded-xl shadow-sm">
+         <h2 className="text-xl md:text-2xl font-bold mb-4 md:mb-6 text-white">Trades</h2>
         <TradeList 
           trades={strategy.trades} 
           onEdit={handleEditTrade} 

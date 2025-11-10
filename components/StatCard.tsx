@@ -19,7 +19,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, isPositive, icon }) =
         <span className="text-[#A0A0A0] group-hover:text-[#6A5ACD] transition-colors">{icon}</span>
         {title}
       </h3>
-      <p className={`text-4xl font-extrabold ${valueColor} leading-tight tracking-tight`}>{value}</p>
+      <p className={`text-3xl md:text-4xl font-extrabold ${valueColor} leading-tight tracking-tight`}>{value}</p>
     </div>
   );
 };

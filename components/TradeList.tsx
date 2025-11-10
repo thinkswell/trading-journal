@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Strategy, Trade, TradeStatus } from '../types';
 import { getTradeStats } from '../lib/tradeCalculations';
 import { useSettings } from '../contexts/SettingsContext';
@@ -75,54 +75,177 @@ const TradeRow: React.FC<{
     )
 }
 
+const TradeCard: React.FC<{
+  trade: Trade;
+  strategyName?: string;
+  onEdit: (trade: Trade) => void;
+  onDelete: (tradeId: string) => void;
+  onViewDetails?: (trade: Trade) => void;
+  capital?: number;
+}> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, capital }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const { currency } = useSettings();
+  const stats = getTradeStats(trade);
+  const percentOfCapital = capital && capital > 0 ? (stats.totalInvested / capital) * 100 : 0;
+
+  return (
+    <div 
+      className="glass-card rounded-lg border border-[rgba(255,255,255,0.1)] p-4 mb-3 cursor-pointer"
+      onClick={() => setIsExpanded(!isExpanded)}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="font-mono font-bold text-white text-lg">{trade.asset}</span>
+            <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusColorMap[trade.status]}`}>
+              {trade.status.toUpperCase()}
+            </span>
+          </div>
+          <div className="text-sm text-[#A0A0A0]">
+            {new Date(trade.date).toLocaleDateString()}
+            {strategyName && <span className="ml-2">• {strategyName}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(trade);
+            }}
+            className="text-[#6A5ACD] hover:text-[#8b5cf6] hover:bg-[#6A5ACD]/10 p-2 rounded-lg transition-all duration-200"
+            aria-label="Edit Trade"
+          >
+            <EditIcon />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(trade.id);
+            }}
+            className="text-[#DC3545] hover:text-[#e85d75] hover:bg-[#DC3545]/10 p-2 rounded-lg transition-all duration-200"
+            aria-label="Delete Trade"
+          >
+            <TrashIcon />
+          </button>
+        </div>
+      </div>
+      
+      {isExpanded && (
+        <div className="mt-4 pt-4 border-t border-[rgba(255,255,255,0.1)] space-y-2">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="flex flex-col">
+              <span className="text-[#A0A0A0] mb-1">Avg. Entry:</span>
+              <span className="text-white font-semibold">{formatCurrency(stats.avgEntryPrice, currency)}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[#A0A0A0] mb-1">Total Qty:</span>
+              <span className="text-white font-semibold">{stats.totalBoughtQty}</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[#A0A0A0] mb-1">Avg. Exit:</span>
+              <span className="text-white font-semibold">
+                {stats.isClosed ? (stats.avgExitPrice > 0 ? formatCurrency(stats.avgExitPrice, currency) : 'N/A') : 'N/A'}
+              </span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[#A0A0A0] mb-1">% of Capital:</span>
+              <span className="text-white font-semibold">{percentOfCapital > 0 ? `${percentOfCapital.toFixed(2)}%` : 'N/A'}</span>
+            </div>
+          </div>
+          {onViewDetails && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewDetails(trade);
+              }}
+              className="w-full mt-3 bg-gradient-to-r from-[#6A5ACD] to-[#8b5cf6] hover:from-[#8b5cf6] hover:to-[#6A5ACD] text-white font-bold py-2 px-4 rounded-lg transition-all duration-200"
+            >
+              View Details
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDelete, onViewDetails, strategyCapital, strategies }) => {
   if (trades.length === 0) {
     return <div className="text-center py-10 text-[#A0A0A0]">No trades recorded yet.</div>;
   }
   
   const showStrategyColumn = !!strategyMap;
+  const sortedTrades = trades.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-[rgba(255,255,255,0.1)] glass-card">
-      <table className="w-full text-left">
-        <thead className="text-xs text-[#A0A0A0] uppercase tracking-wider border-b border-[rgba(255,255,255,0.1)]">
-          <tr>
-            <th className="p-4 font-bold">Date</th>
-            <th className="p-4 font-bold">Asset</th>
-            {showStrategyColumn && <th className="p-4 font-bold">Strategy</th>}
-            <th className="p-4 font-bold">Avg. Entry</th>
-            <th className="p-4 font-bold">Total Qty</th>
-            <th className="p-4 font-bold">Avg. Exit</th>
-            <th className="p-4 font-bold">% of Capital</th>
-            <th className="p-4 font-bold">Status</th>
-            <th className="p-4 text-right font-bold">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[rgba(255,255,255,0.05)]">
-          {trades.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((trade, index) => {
-            let capitalForTrade: number | undefined;
-            if (strategyCapital) {
+    <>
+      {/* Mobile Card View */}
+      <div className="block md:hidden space-y-3">
+        {sortedTrades.map((trade) => {
+          let capitalForTrade: number | undefined;
+          if (strategyCapital) {
+            capitalForTrade = strategyCapital;
+          } else if (strategies) {
+            const tradeStrategy = strategies.find(s => s.id === trade.strategyId);
+            capitalForTrade = tradeStrategy?.initialCapital;
+          }
+
+          return (
+            <TradeCard
+              key={trade.id}
+              trade={trade}
+              strategyName={strategyMap ? strategyMap[trade.strategyId] : undefined}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onViewDetails={onViewDetails}
+              capital={capitalForTrade}
+            />
+          );
+        })}
+      </div>
+
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-[rgba(255,255,255,0.1)] glass-card">
+        <table className="w-full text-left">
+          <thead className="text-xs text-[#A0A0A0] uppercase tracking-wider border-b border-[rgba(255,255,255,0.1)]">
+            <tr>
+              <th className="p-4 font-bold">Date</th>
+              <th className="p-4 font-bold">Asset</th>
+              {showStrategyColumn && <th className="p-4 font-bold">Strategy</th>}
+              <th className="p-4 font-bold">Avg. Entry</th>
+              <th className="p-4 font-bold">Total Qty</th>
+              <th className="p-4 font-bold">Avg. Exit</th>
+              <th className="p-4 font-bold">% of Capital</th>
+              <th className="p-4 font-bold">Status</th>
+              <th className="p-4 text-right font-bold">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[rgba(255,255,255,0.05)]">
+            {sortedTrades.map((trade) => {
+              let capitalForTrade: number | undefined;
+              if (strategyCapital) {
                 capitalForTrade = strategyCapital;
-            } else if (strategies) {
+              } else if (strategies) {
                 const tradeStrategy = strategies.find(s => s.id === trade.strategyId);
                 capitalForTrade = tradeStrategy?.initialCapital;
-            }
+              }
 
-            return (
+              return (
                 <TradeRow 
-                    key={trade.id} 
-                    trade={trade} 
-                    strategyName={strategyMap ? strategyMap[trade.strategyId] : undefined}
-                    onEdit={onEdit}
-                    onDelete={onDelete}
-                    onViewDetails={onViewDetails}
-                    capital={capitalForTrade}
+                  key={trade.id} 
+                  trade={trade} 
+                  strategyName={strategyMap ? strategyMap[trade.strategyId] : undefined}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onViewDetails={onViewDetails}
+                  capital={capitalForTrade}
                 />
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 };
 

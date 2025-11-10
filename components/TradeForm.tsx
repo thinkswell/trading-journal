@@ -599,10 +599,11 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
   const tradeStats = getTradeStats({ ...trade, id: '', strategyId: '' });
 
   return (
-    <form onSubmit={handleSubmit} className="p-6 space-y-8 max-h-[85vh] overflow-y-auto">
-      <h2 className="text-4xl font-extrabold bg-gradient-to-r from-white to-[#E0E0E0] bg-clip-text text-transparent mb-8">{existingTrade ? 'Edit Trade' : 'Add New Trade'}</h2>
+    <form onSubmit={handleSubmit} className="p-3 md:p-6 space-y-4 md:space-y-8 h-full md:h-auto md:max-h-[85vh] md:overflow-y-auto flex flex-col md:block">
+      <h2 className="text-2xl md:text-4xl font-extrabold bg-gradient-to-r from-white to-[#E0E0E0] bg-clip-text text-transparent mb-4 md:mb-8">{existingTrade ? 'Edit Trade' : 'Add New Trade'}</h2>
+      <div className="flex-1 md:flex-none overflow-y-auto space-y-4 md:space-y-8">
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         <InputField 
           label="Asset" 
           name="asset" 
@@ -625,7 +626,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         <InputField 
           label="Entry Price" 
           name="entryPrice" 
@@ -670,7 +671,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
         <div>
             <label className="block text-sm font-semibold text-[#E0E0E0] mb-3">Status</label>
             <select name="status" value={trade.status} onChange={handleChange} 
@@ -703,8 +704,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         <RichTextEditor content={trade.notes} onSave={handleNotesChange} />
       </div>
 
-      <div className="glass-card p-6 rounded-xl space-y-5">
-        <h3 className="text-xl font-bold text-white border-b border-[rgba(255,255,255,0.1)] pb-3">Pyramiding</h3>
+      <div className="glass-card p-3 md:p-6 rounded-xl space-y-3 md:space-y-5">
+        <h3 className="text-lg md:text-xl font-bold text-white border-b border-[rgba(255,255,255,0.1)] pb-2 md:pb-3">Pyramiding</h3>
         {trade.pyramids.map((p, index) => (
             <div key={p.id} className="flex items-end gap-4">
                 <div className="flex-1 relative">
@@ -755,8 +756,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         </button>
       </div>
 
-       <div className="glass-card p-6 rounded-xl space-y-5">
-        <h3 className="text-xl font-bold text-white border-b border-[rgba(255,255,255,0.1)] pb-3">Partial Exits</h3>
+       <div className="glass-card p-3 md:p-6 rounded-xl space-y-3 md:space-y-5">
+        <h3 className="text-lg md:text-xl font-bold text-white border-b border-[rgba(255,255,255,0.1)] pb-2 md:pb-3">Partial Exits</h3>
         {(trade.partialExits || []).map((pe, index) => (
             <div key={pe.id} className="flex items-end gap-4">
                 <div className="flex-1 relative">
@@ -808,8 +809,8 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         <p className="text-sm text-[#6A5ACD] font-medium mt-4">Current Holdings: {tradeStats.currentHoldingsQty} of {tradeStats.totalBoughtQty}</p>
       </div>
 
-       <div className="glass-card p-6 rounded-xl space-y-5">
-        <h3 className="text-xl font-bold text-white border-b border-[rgba(255,255,255,0.1)] pb-3">Trailing Stops</h3>
+       <div className="glass-card p-3 md:p-6 rounded-xl space-y-3 md:space-y-5">
+        <h3 className="text-lg md:text-xl font-bold text-white border-b border-[rgba(255,255,255,0.1)] pb-2 md:pb-3">Trailing Stops</h3>
         {trade.trailingStops.map((ts, index) => (
             <div key={ts.id} className="flex items-center gap-4">
                  <div className="flex-1 relative">
@@ -842,13 +843,14 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         </button>
       </div>
 
-      <div className="flex justify-end gap-4 pt-8 border-t border-[rgba(255,255,255,0.1)]">
+      </div>
+      <div className="flex flex-col md:flex-row justify-end gap-3 md:gap-4 pt-3 md:pt-6 border-t border-[rgba(255,255,255,0.1)] mt-auto md:mt-0">
         <button type="button" onClick={onCancel} 
-                className="bg-[#2C2C2C] hover:bg-[#3f3f46] text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]">
+                className="w-full md:w-auto bg-[#2C2C2C] hover:bg-[#3f3f46] text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]">
           Cancel
         </button>
         <button type="submit" 
-                className="bg-gradient-to-r from-[#6A5ACD] to-[#8b5cf6] hover:from-[#8b5cf6] hover:to-[#6A5ACD] text-white font-bold py-3 px-6 rounded-lg 
+                className="w-full md:w-auto bg-gradient-to-r from-[#6A5ACD] to-[#8b5cf6] hover:from-[#8b5cf6] hover:to-[#6A5ACD] text-white font-bold py-3 px-6 rounded-lg 
                           shadow-sm shadow-[#6A5ACD]/10 hover:shadow-md hover:shadow-[#6A5ACD]/15 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]">
           Save Trade
         </button>
