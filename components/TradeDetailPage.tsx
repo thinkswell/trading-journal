@@ -4,11 +4,13 @@ import { getTradeStats } from '../lib/tradeCalculations';
 import { statusColorMap } from './TradeList';
 import RichTextEditor from './RichTextEditor';
 import { EditIcon } from './icons/EditIcon';
+import { ExternalLinkIcon } from './icons/ExternalLinkIcon';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
 import { TrendingUpIcon } from './icons/TrendingUpIcon';
 import { TrendingDownIcon } from './icons/TrendingDownIcon';
 import { DocumentTextIcon } from './icons/DocumentTextIcon';
+import { openTradingView } from '../lib/tradingViewUtils';
 
 interface TradeDetailPageProps {
   trade: Trade;
@@ -51,9 +53,18 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                     &larr; {backButtonText}
                 </button>
                 <div className="flex flex-col md:flex-row items-start md:items-center gap-3 md:gap-4">
-                    <h1 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
-                      {trade.asset}
-                    </h1>
+                    <div className="flex items-center gap-3">
+                      <h1 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
+                        {trade.asset}
+                      </h1>
+                      <button
+                        onClick={(e) => openTradingView(trade.asset, e)}
+                        className="text-[#A0A0A0] hover:text-[#6A5ACD] hover:bg-[#6A5ACD]/10 p-2 rounded-lg transition-all duration-200"
+                        aria-label={`Open ${trade.asset} on TradingView`}
+                      >
+                        <ExternalLinkIcon className="w-5 h-5 md:w-6 md:h-6" />
+                      </button>
+                    </div>
                     <div className="flex items-center gap-3">
                      <button 
                         onClick={() => onOpenTradeForm(trade)}

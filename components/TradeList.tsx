@@ -5,6 +5,8 @@ import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
 import { EditIcon } from './icons/EditIcon';
 import { TrashIcon } from './icons/TrashIcon';
+import { ExternalLinkIcon } from './icons/ExternalLinkIcon';
+import { openTradingView } from '../lib/tradingViewUtils';
 
 interface TradeListProps {
   trades: Trade[];
@@ -42,7 +44,18 @@ const TradeRow: React.FC<{
             onClick={() => onViewDetails?.(trade)}
         >
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{new Date(trade.date).toLocaleDateString()}</td>
-            <td className="p-4 font-mono font-bold text-white">{trade.asset}</td>
+            <td className="p-4">
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-bold text-white">{trade.asset}</span>
+                <button
+                  onClick={(e) => openTradingView(trade.asset, e)}
+                  className="text-[#A0A0A0] hover:text-[#6A5ACD] hover:bg-[#6A5ACD]/10 p-1 rounded transition-all duration-200 opacity-0 group-hover:opacity-100"
+                  aria-label={`Open ${trade.asset} on TradingView`}
+                >
+                  <ExternalLinkIcon className="w-4 h-4" />
+                </button>
+              </div>
+            </td>
             {strategyName && <td className="p-4 text-[#A0A0A0] group-hover:text-[#E0E0E0] transition-colors">{strategyName}</td>}
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{formatCurrency(stats.avgEntryPrice, currency)}</td>
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{stats.totalBoughtQty}</td>
@@ -97,6 +110,13 @@ const TradeCard: React.FC<{
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <span className="font-mono font-bold text-white text-lg">{trade.asset}</span>
+            <button
+              onClick={(e) => openTradingView(trade.asset, e)}
+              className="text-[#A0A0A0] hover:text-[#6A5ACD] hover:bg-[#6A5ACD]/10 p-1.5 rounded transition-all duration-200"
+              aria-label={`Open ${trade.asset} on TradingView`}
+            >
+              <ExternalLinkIcon className="w-4 h-4" />
+            </button>
             <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusColorMap[trade.status]}`}>
               {trade.status.toUpperCase()}
             </span>
