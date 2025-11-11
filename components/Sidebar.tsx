@@ -34,7 +34,7 @@ const Sidebar: React.FC<SidebarProps> = ({ strategies, activeView, navigateTo, o
              <FiBriefcase size={24} />
            </div>
          </div>
-        <h1 className="text-2xl font-extrabold bg-gradient-to-r from-white to-[#E0E0E0] bg-clip-text text-transparent">Trader-Log Journal</h1>
+        <h1 className="text-2xl font-extrabold bg-gradient-to-r from-white to-[#E0E0E0] bg-clip-text text-transparent">Zenith Journal</h1>
       </div>
       <nav className="flex-1 relative z-10">
         <ul>

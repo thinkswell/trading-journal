@@ -1,4 +1,4 @@
-# Trader-Log Trade Journal - Desktop Application Architecture
+# Zenith Trade Journal - Desktop Application Architecture
 
 ## Overview
 This is a **desktop-first React application** built with Vite, TypeScript, and Firebase. It's designed as a single-page application (SPA) optimized for desktop use with a fixed sidebar navigation layout.
