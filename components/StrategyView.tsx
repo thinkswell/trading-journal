@@ -14,6 +14,8 @@ import { ScaleIcon } from './icons/ScaleIcon';
 import { ReceiptPercentIcon } from './icons/ReceiptPercentIcon';
 import { TrendingUpIcon } from './icons/TrendingUpIcon';
 import { CalculatorIcon } from './icons/CalculatorIcon';
+import { PinIcon } from './icons/PinIcon';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 
 interface StrategyViewProps {
   strategy: Strategy;
@@ -24,11 +26,17 @@ interface StrategyViewProps {
   onOpenTradeForm: (trade: Trade | null) => void;
 }
 
+type StrategyStatKey = 'currentCapital' | 'totalPL' | 'gainOnCapital' | 'amountInvested' | 'riskPercent' | 'winRate' | 'totalTrades';
+
+const DEFAULT_PINNED_STATS: StrategyStatKey[] = ['currentCapital', 'gainOnCapital'];
+
 const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, onUpdateStrategy, onDeleteStrategy, navigateTo, onOpenTradeForm }) => {
   const [isEditStrategyModalOpen, setIsEditStrategyModalOpen] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [editedName, setEditedName] = useState(strategy.name);
   const [editedCapital, setEditedCapital] = useState(strategy.initialCapital.toString());
+  const [pinnedStats, setPinnedStats] = useLocalStorage<StrategyStatKey[]>('strategy-view-pinned-stats', DEFAULT_PINNED_STATS);
+  const [isAccordionOpen, setIsAccordionOpen] = useState(false);
   const { currency } = useSettings();
   
   useEffect(() => {
@@ -86,6 +94,42 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
     return { totalPL, currentCapital, winRate, totalTrades, amountInvested, riskPercent, gainOnCapital };
   }, [strategy]);
 
+  // Define all stats with their keys
+  const allStats = useMemo(() => {
+    return [
+      { key: 'currentCapital' as StrategyStatKey, title: 'Current Capital', value: formatCurrency(stats.currentCapital, currency), icon: <MoneyIcon />, isPositive: undefined },
+      { key: 'totalPL' as StrategyStatKey, title: 'Strategy P/L', value: formatCurrency(stats.totalPL, currency), icon: <ScaleIcon />, isPositive: stats.totalPL >= 0 },
+      { key: 'gainOnCapital' as StrategyStatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0 },
+      { key: 'amountInvested' as StrategyStatKey, title: 'Amount Invested', value: formatCurrency(stats.amountInvested, currency), icon: <ScaleIcon />, isPositive: undefined },
+      { key: 'riskPercent' as StrategyStatKey, title: '% Risk', value: `${stats.riskPercent.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskPercent < 5 },
+      { key: 'winRate' as StrategyStatKey, title: 'Win Rate', value: `${stats.winRate.toFixed(1)}%`, icon: <TrendingUpIcon />, isPositive: stats.winRate >= 50 },
+      { key: 'totalTrades' as StrategyStatKey, title: 'Total Trades', value: stats.totalTrades.toString(), icon: <CalculatorIcon />, isPositive: undefined },
+    ];
+  }, [stats, currency]);
+
+  // Separate stats into pinned and unpinned
+  const pinnedStatsList = useMemo(() => {
+    return allStats.filter(stat => pinnedStats.includes(stat.key));
+  }, [allStats, pinnedStats]);
+
+  const unpinnedStatsList = useMemo(() => {
+    return allStats.filter(stat => !pinnedStats.includes(stat.key));
+  }, [allStats, pinnedStats]);
+
+  const handlePinStat = (statKey: StrategyStatKey) => {
+    if (pinnedStats.includes(statKey)) {
+      // Unpin
+      setPinnedStats(pinnedStats.filter(key => key !== statKey));
+    } else {
+      // Pin (max 2)
+      if (pinnedStats.length < 2) {
+        setPinnedStats([...pinnedStats, statKey]);
+      } else {
+        // Replace the first pinned stat
+        setPinnedStats([pinnedStats[1], statKey]);
+      }
+    }
+  };
 
   return (
     <div className="space-y-6 md:space-y-8 animate-fade-in">
@@ -112,14 +156,63 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
         </button>
       </div>
 
-       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-        <StatCard icon={<MoneyIcon />} title="Current Capital" value={formatCurrency(stats.currentCapital, currency)} />
-        <StatCard icon={<ScaleIcon />} title="Strategy P/L" value={formatCurrency(stats.totalPL, currency)} isPositive={stats.totalPL >= 0} />
-        <StatCard icon={<TrendingUpIcon />} title="% Gain on Capital" value={`${stats.gainOnCapital.toFixed(2)}%`} isPositive={stats.gainOnCapital >= 0} />
-        <StatCard icon={<ScaleIcon />} title="Amount Invested" value={formatCurrency(stats.amountInvested, currency)} />
-        <StatCard icon={<ReceiptPercentIcon />} title="% Risk" value={`${stats.riskPercent.toFixed(2)}%`} isPositive={stats.riskPercent < 5} />
-        <StatCard icon={<TrendingUpIcon />} title="Win Rate" value={`${stats.winRate.toFixed(1)}%`} isPositive={stats.winRate >= 50}/>
-        <StatCard icon={<CalculatorIcon />} title="Total Trades" value={stats.totalTrades.toString()} />
+      {/* Desktop: Show all stats in grid */}
+      <div className="hidden md:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {allStats.map(stat => (
+          <StatCard key={stat.key} icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+        ))}
+      </div>
+
+      {/* Mobile: Show pinned stats at top, rest in accordion */}
+      <div className="md:hidden space-y-4">
+        {/* Pinned Stats */}
+        <div className="flex flex-col gap-4">
+          {pinnedStatsList.map(stat => (
+            <div key={stat.key} className="relative">
+              <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+              <button
+                onClick={() => handlePinStat(stat.key)}
+                className="absolute top-2 right-2 p-1.5 rounded-lg bg-[#6A5ACD]/20 hover:bg-[#6A5ACD]/30 text-[#6A5ACD] transition-all duration-200"
+                aria-label="Unpin stat"
+              >
+                <PinIcon className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Accordion for unpinned stats */}
+        {unpinnedStatsList.length > 0 && (
+          <div className="glass-card rounded-xl shadow-sm overflow-hidden">
+            <button
+              onClick={() => setIsAccordionOpen(!isAccordionOpen)}
+              className="w-full flex items-center justify-between p-4 text-left hover:bg-[rgba(255,255,255,0.05)] transition-colors"
+            >
+              <span className="text-white font-semibold">
+                Other Stats ({unpinnedStatsList.length})
+              </span>
+              <span className={`text-[#A0A0A0] transition-transform duration-200 ${isAccordionOpen ? 'rotate-180' : ''}`}>
+                ▼
+              </span>
+            </button>
+            {isAccordionOpen && (
+              <div className="grid grid-cols-2 gap-4 p-4 border-t border-[rgba(255,255,255,0.1)]">
+                {unpinnedStatsList.map(stat => (
+                  <div key={stat.key} className="relative">
+                    <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+                    <button
+                      onClick={() => handlePinStat(stat.key)}
+                      className="absolute top-2 right-2 p-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] hover:bg-[#6A5ACD]/30 text-[#A0A0A0] hover:text-[#6A5ACD] transition-all duration-200"
+                      aria-label="Pin stat"
+                    >
+                      <PinIcon className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="glass-card p-4 md:p-6 rounded-xl shadow-sm">
