@@ -10,6 +10,7 @@ import { getTradeStats } from '../lib/tradeCalculations';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
 import { MoneyIcon } from './icons/MoneyIcon';
+import { BagOfMoneyIcon } from './icons/BagOfMoneyIcon';
 import { ScaleIcon } from './icons/ScaleIcon';
 import { ReceiptPercentIcon } from './icons/ReceiptPercentIcon';
 import { TrendingUpIcon } from './icons/TrendingUpIcon';
@@ -98,7 +99,7 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
   const allStats = useMemo(() => {
     return [
       { key: 'currentCapital' as StrategyStatKey, title: 'Current Capital', value: formatCurrency(stats.currentCapital, currency), icon: <MoneyIcon />, isPositive: undefined },
-      { key: 'totalPL' as StrategyStatKey, title: 'Strategy P/L', value: formatCurrency(stats.totalPL, currency), icon: <ScaleIcon />, isPositive: stats.totalPL >= 0 },
+      { key: 'totalPL' as StrategyStatKey, title: 'Strategy P/L', value: formatCurrency(stats.totalPL, currency), icon: <BagOfMoneyIcon />, isPositive: stats.totalPL >= 0 },
       { key: 'gainOnCapital' as StrategyStatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0 },
       { key: 'amountInvested' as StrategyStatKey, title: 'Amount Invested', value: formatCurrency(stats.amountInvested, currency), icon: <ScaleIcon />, isPositive: undefined },
       { key: 'riskPercent' as StrategyStatKey, title: '% Risk', value: `${stats.riskPercent.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskPercent < 5 },

@@ -3,6 +3,7 @@ import { Strategy, Trade } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import Sidebar from './components/Sidebar';
 import BottomNav from './components/BottomNav';
+import Footer from './components/Footer';
 import Dashboard from './components/Dashboard';
 import StrategyView from './components/StrategyView';
 import TradeDetailPage from './components/TradeDetailPage';
@@ -83,6 +84,34 @@ const AppContent: React.FC = () => {
     setActiveView(view);
   };
 
+  // Sync function to fetch latest data from Firebase
+  const syncFromFirebase = async (user: User | null, setLoadingState: boolean = false) => {
+    if (!user) {
+      return;
+    }
+
+    try {
+      if (setLoadingState) {
+        setLoading(true);
+      }
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      if (userDoc.exists()) {
+        const data = userDoc.data();
+        if(data.strategies) setStrategies(data.strategies);
+        if(data.firstName) setFirstName(data.firstName);
+        if(data.lastName) setLastName(data.lastName);
+      }
+    } catch (error) {
+      console.error('Error syncing from Firebase:', error);
+      // Don't break the app if sync fails
+    } finally {
+      if (setLoadingState) {
+        setLoading(false);
+      }
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async user => {
       setLoading(true);
@@ -112,6 +141,26 @@ const AppContent: React.FC = () => {
       setLoading(false);
     });
     return () => unsubscribe();
+  }, []);
+
+  // Sync from Firebase when tab becomes visible
+  useEffect(() => {
+    let isSyncing = false;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && auth.currentUser && !isSyncing) {
+        isSyncing = true;
+        syncFromFirebase(auth.currentUser, false).finally(() => {
+          isSyncing = false;
+        });
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const saveStrategies = async (newStrategies: Strategy[]) => {
@@ -396,6 +445,7 @@ const AppContent: React.FC = () => {
         </Modal>
       )}
 
+      <Footer />
     </div>
   );
 };

@@ -6,6 +6,7 @@ import { getTradeStats } from '../lib/tradeCalculations';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
 import { MoneyIcon } from './icons/MoneyIcon';
+import { BagOfMoneyIcon } from './icons/BagOfMoneyIcon';
 import { ScaleIcon } from './icons/ScaleIcon';
 import { ReceiptPercentIcon } from './icons/ReceiptPercentIcon';
 import { TrendingUpIcon } from './icons/TrendingUpIcon';
@@ -105,7 +106,7 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
   const allStats = useMemo(() => {
     return [
       { key: 'totalCapital' as StatKey, title: 'Total Capital', value: formatCurrency(stats.totalCapital, currency), icon: <MoneyIcon />, isPositive: undefined },
-      { key: 'totalPL' as StatKey, title: 'Total P/L', value: formatCurrency(stats.totalPL, currency), icon: <MoneyIcon />, isPositive: stats.totalPL >= 0 },
+      { key: 'totalPL' as StatKey, title: 'Total P/L', value: formatCurrency(stats.totalPL, currency), icon: <BagOfMoneyIcon />, isPositive: stats.totalPL >= 0 },
       { key: 'gainOnCapital' as StatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0 },
       { key: 'amountInvested' as StatKey, title: 'Amount Invested', value: formatCurrency(stats.amountInvested, currency), icon: <ScaleIcon />, isPositive: undefined },
       { key: 'riskOnCapital' as StatKey, title: '% Risk on Capital', value: `${stats.riskOnCapital.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskOnCapital < 5 },
