@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Strategy, Trade } from '../types';
+import { Strategy, Trade, TradeStatus } from '../types';
 import TradeList from './TradeList';
 import Modal from './Modal';
 import ConfirmationModal from './ConfirmationModal';
@@ -28,6 +28,8 @@ interface StrategyViewProps {
 }
 
 type StrategyStatKey = 'currentCapital' | 'totalPL' | 'gainOnCapital' | 'amountInvested' | 'riskPercent' | 'winRate' | 'totalTrades';
+type SortOption = 'date' | 'asset' | 'percentInvested';
+type StatusFilter = 'all' | 'open' | 'closed' | 'win' | 'loss' | 'breakeven';
 
 const DEFAULT_PINNED_STATS: StrategyStatKey[] = ['currentCapital', 'gainOnCapital'];
 
@@ -38,6 +40,8 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
   const [editedCapital, setEditedCapital] = useState(strategy.initialCapital.toString());
   const [pinnedStats, setPinnedStats] = useLocalStorage<StrategyStatKey[]>('strategy-view-pinned-stats', DEFAULT_PINNED_STATS);
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
+  const [sortOption, setSortOption] = useState<SortOption>('date');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const { currency } = useSettings();
   
   useEffect(() => {
@@ -132,6 +136,40 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
     }
   };
 
+  // Filter trades by status
+  const filteredTrades = useMemo(() => {
+    return strategy.trades.filter(trade => {
+      if (statusFilter === 'all') return true;
+      if (statusFilter === 'closed') return trade.status !== 'open';
+      return trade.status === statusFilter;
+    });
+  }, [strategy.trades, statusFilter]);
+
+  // Sort trades
+  const sortedTrades = useMemo(() => {
+    const trades = [...filteredTrades];
+    
+    return trades.sort((a, b) => {
+      switch (sortOption) {
+        case 'date':
+          // Newest first (descending)
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        case 'asset':
+          // A-Z (ascending)
+          return a.asset.localeCompare(b.asset);
+        case 'percentInvested':
+          // Highest first (descending)
+          const statsA = getTradeStats(a);
+          const statsB = getTradeStats(b);
+          const percentA = strategy.initialCapital > 0 ? (statsA.totalInvested / strategy.initialCapital) * 100 : 0;
+          const percentB = strategy.initialCapital > 0 ? (statsB.totalInvested / strategy.initialCapital) * 100 : 0;
+          return percentB - percentA;
+        default:
+          return 0;
+      }
+    });
+  }, [filteredTrades, sortOption, strategy.initialCapital]);
+
   return (
     <div className="space-y-6 md:space-y-8 animate-fade-in">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -218,12 +256,30 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
 
       <div className="glass-card p-4 md:p-6 rounded-xl shadow-sm">
          <h2 className="text-xl md:text-2xl font-bold mb-4 md:mb-6 text-white">Trades</h2>
+         <div className="mb-4 flex flex-col sm:flex-row gap-3">
+           <select 
+             className="border border-[rgba(255,255,255,0.1)] rounded-lg px-3 py-3 text-white bg-[rgba(0,0,0,0.2)]
+                       focus:ring-2 focus:ring-[#6A5ACD]/50 focus:border-[#6A5ACD]/50 focus:outline-none
+                       transition-all duration-200 hover:border-[rgba(255,255,255,0.2)] appearance-none cursor-pointer"
+             value={statusFilter}
+             onChange={e => setStatusFilter(e.target.value as StatusFilter)}
+           >
+             <option value="all">All Trades</option>
+             <option value="open">Open</option>
+             <option value="closed">Closed</option>
+             <option value="win">Win</option>
+             <option value="loss">Loss</option>
+             <option value="breakeven">Breakeven</option>
+           </select>
+         </div>
         <TradeList 
-          trades={strategy.trades} 
+          trades={sortedTrades} 
           onEdit={handleEditTrade} 
           onDelete={(tradeId) => onDeleteTrade(tradeId, strategy.id)}
           onViewDetails={(trade) => navigateTo(`trade/${trade.id}`)}
           strategyCapital={strategy.initialCapital}
+          sortOption={sortOption}
+          onSortChange={setSortOption}
         />
       </div>
       

@@ -23,6 +23,7 @@ interface DashboardProps {
 }
 
 type StatKey = 'totalCapital' | 'totalPL' | 'gainOnCapital' | 'amountInvested' | 'riskOnCapital' | 'winRate' | 'profitFactor' | 'totalTrades';
+type SortOption = 'date' | 'asset' | 'percentInvested';
 
 const DEFAULT_PINNED_STATS: StatKey[] = ['totalCapital', 'gainOnCapital'];
 
@@ -32,6 +33,7 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
   const [strategyFilter, setStrategyFilter] = useState<string>('all');
   const [pinnedStats, setPinnedStats] = useLocalStorage<StatKey[]>('dashboard-pinned-stats', DEFAULT_PINNED_STATS);
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
+  const [sortOption, setSortOption] = useState<SortOption>('date');
   const { currency } = useSettings();
 
   const filteredTrades = useMemo(() => {
@@ -92,6 +94,35 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
         acc[s.id] = s.name;
         return acc;
     }, {} as Record<string, string>), [strategies]);
+
+  // Sort trades
+  const sortedTrades = useMemo(() => {
+    const trades = [...filteredTrades];
+    
+    return trades.sort((a, b) => {
+      switch (sortOption) {
+        case 'date':
+          // Newest first (descending)
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        case 'asset':
+          // A-Z (ascending)
+          return a.asset.localeCompare(b.asset);
+        case 'percentInvested':
+          // Highest first (descending)
+          const statsA = getTradeStats(a);
+          const statsB = getTradeStats(b);
+          const strategyA = strategies.find(s => s.id === a.strategyId);
+          const strategyB = strategies.find(s => s.id === b.strategyId);
+          const capitalA = strategyA?.initialCapital || 0;
+          const capitalB = strategyB?.initialCapital || 0;
+          const percentA = capitalA > 0 ? (statsA.totalInvested / capitalA) * 100 : 0;
+          const percentB = capitalB > 0 ? (statsB.totalInvested / capitalB) * 100 : 0;
+          return percentB - percentA;
+        default:
+          return 0;
+      }
+    });
+  }, [filteredTrades, sortOption, strategies]);
 
   const handleDeleteFromDashboard = (tradeId: string) => {
     const tradeToDelete = allTrades.find(t => t.id === tradeId);
@@ -246,12 +277,14 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
           </select>
         </div>
         <TradeList 
-            trades={filteredTrades} 
+            trades={sortedTrades} 
             strategyMap={strategyMap} 
             onEdit={onOpenTradeForm} 
             onDelete={handleDeleteFromDashboard}
             onViewDetails={(trade) => navigateTo(`trade/${trade.id}`)}
             strategies={strategies}
+            sortOption={sortOption}
+            onSortChange={setSortOption}
         />
       </div>
     </div>

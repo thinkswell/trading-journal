@@ -8,6 +8,8 @@ import { TrashIcon } from './icons/TrashIcon';
 import { ExternalLinkIcon } from './icons/ExternalLinkIcon';
 import { openTradingView } from '../lib/tradingViewUtils';
 
+type SortOption = 'date' | 'asset' | 'percentInvested';
+
 interface TradeListProps {
   trades: Trade[];
   strategyMap?: Record<string, string>;
@@ -16,6 +18,8 @@ interface TradeListProps {
   onViewDetails?: (trade: Trade) => void;
   strategyCapital?: number;
   strategies?: Strategy[];
+  sortOption?: SortOption;
+  onSortChange?: (option: SortOption) => void;
 }
 
 export const statusColorMap: Record<TradeStatus, string> = {
@@ -189,19 +193,30 @@ const TradeCard: React.FC<{
   );
 };
 
-const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDelete, onViewDetails, strategyCapital, strategies }) => {
+const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDelete, onViewDetails, strategyCapital, strategies, sortOption, onSortChange }) => {
   if (trades.length === 0) {
     return <div className="text-center py-10 text-[#A0A0A0]">No trades recorded yet.</div>;
   }
   
   const showStrategyColumn = !!strategyMap;
-  const sortedTrades = trades.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const isSortable = !!onSortChange;
+  
+  const handleSort = (option: SortOption) => {
+    if (onSortChange) {
+      onSortChange(option);
+    }
+  };
+
+  const SortIndicator: React.FC<{ option: SortOption }> = ({ option }) => {
+    if (!isSortable || sortOption !== option) return null;
+    return <span className="ml-1 text-[#6A5ACD]">●</span>;
+  };
 
   return (
     <>
       {/* Mobile Card View */}
       <div className="block md:hidden space-y-3">
-        {sortedTrades.map((trade) => {
+        {trades.map((trade) => {
           let capitalForTrade: number | undefined;
           if (strategyCapital) {
             capitalForTrade = strategyCapital;
@@ -229,19 +244,37 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
         <table className="w-full text-left">
           <thead className="text-xs text-[#A0A0A0] uppercase tracking-wider border-b border-[rgba(255,255,255,0.1)]">
             <tr>
-              <th className="p-4 font-bold">Date</th>
-              <th className="p-4 font-bold">Asset</th>
+              <th 
+                className={`p-4 font-bold ${isSortable ? 'cursor-pointer hover:text-white transition-colors' : ''}`}
+                onClick={() => isSortable && handleSort('date')}
+              >
+                Date
+                <SortIndicator option="date" />
+              </th>
+              <th 
+                className={`p-4 font-bold ${isSortable ? 'cursor-pointer hover:text-white transition-colors' : ''}`}
+                onClick={() => isSortable && handleSort('asset')}
+              >
+                Asset
+                <SortIndicator option="asset" />
+              </th>
               {showStrategyColumn && <th className="p-4 font-bold">Strategy</th>}
               <th className="p-4 font-bold">Avg. Entry</th>
               <th className="p-4 font-bold">Total Qty</th>
               <th className="p-4 font-bold">Avg. Exit</th>
-              <th className="p-4 font-bold">% of Capital</th>
+              <th 
+                className={`p-4 font-bold ${isSortable ? 'cursor-pointer hover:text-white transition-colors' : ''}`}
+                onClick={() => isSortable && handleSort('percentInvested')}
+              >
+                % of Capital
+                <SortIndicator option="percentInvested" />
+              </th>
               <th className="p-4 font-bold">Status</th>
               <th className="p-4 text-right font-bold">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[rgba(255,255,255,0.05)]">
-            {sortedTrades.map((trade) => {
+            {trades.map((trade) => {
               let capitalForTrade: number | undefined;
               if (strategyCapital) {
                 capitalForTrade = strategyCapital;
