@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Trade, PyramidEntry, TrailingStop, TradeStatus, PartialExit } from '../types';
 import { PlusIcon } from './icons/PlusIcon';
 import { XIcon } from './icons/XIcon';
-import { getTradeStats } from '../lib/tradeCalculations';
+import { getTradeStats, calculateTradeStatus } from '../lib/tradeCalculations';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
 import RichTextEditor from './RichTextEditor';
+import ConfirmationModal from './ConfirmationModal';
+import Modal from './Modal';
 
 interface TradeFormProps {
   strategyId: string;
@@ -62,22 +64,34 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
     pyramids: [],
     trailingStops: [],
     partialExits: [],
+    statusManuallySet: false,
   });
   const [slInput, setSlInput] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [isFormDirty, setIsFormDirty] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [notesContent, setNotesContent] = useState<string>('');
+  const notesContentRef = useRef<string>('');
+  const initialFormStateRef = useRef<Omit<Trade, 'id' | 'strategyId'> | null>(null);
   const { currency } = useSettings();
 
   useEffect(() => {
     if (existingTrade) {
-      setTrade({
+      const initialTrade = {
         ...existingTrade,
         date: new Date(existingTrade.date).toISOString().split('T')[0],
         partialExits: existingTrade.partialExits || [],
-      });
+      };
+      setTrade(initialTrade);
+      const existingNotes = existingTrade.notes || '';
+      setNotesContent(existingNotes);
+      notesContentRef.current = existingNotes;
+      setIsFormDirty(false);
+      initialFormStateRef.current = { ...initialTrade };
       setSlInput(existingTrade.initialSl > 0 ? String(existingTrade.initialSl) : '');
     } else {
-       setTrade({
+      const emptyTrade: Omit<Trade, 'id' | 'strategyId'> = {
             asset: '',
             date: new Date().toISOString().split('T')[0],
             entryPrice: 0,
@@ -88,7 +102,13 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
             pyramids: [],
             trailingStops: [],
             partialExits: [],
-        });
+            statusManuallySet: false,
+        };
+        setTrade(emptyTrade);
+        setNotesContent('');
+        notesContentRef.current = '';
+        setIsFormDirty(false);
+        initialFormStateRef.current = { ...emptyTrade };
         setSlInput('');
     }
   }, [existingTrade]);
@@ -305,7 +325,23 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setTrade(prev => ({ ...prev, [name]: name === 'entryPrice' || name === 'quantity' || name === 'exitPrice' ? parseFloat(value) : value }));
+    
+    // Track manual status changes
+    if (name === 'status') {
+      setTrade(prev => ({ 
+        ...prev, 
+        [name]: value,
+        statusManuallySet: true // Mark as manually set when user changes status
+      }));
+    } else {
+      setTrade(prev => ({ 
+        ...prev, 
+        [name]: name === 'entryPrice' || name === 'quantity' || name === 'exitPrice' ? parseFloat(value) : value 
+      }));
+    }
+    
+    // Mark form as dirty when any field changes
+    setIsFormDirty(true);
     
     // Clear error when user starts typing
     if (errors[name]) {
@@ -332,7 +368,17 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
   };
 
   const handleNotesChange = (newNotes: string) => {
+    // This is called when user clicks "Save Notes" button (only in trade detail page)
+    // In trade form, we don't use this since notes are saved with the trade
     setTrade(prev => ({ ...prev, notes: newNotes }));
+  };
+
+  const handleNotesContentChange = (newContent: string) => {
+    // Store notes content in both ref and state
+    // Ref is used when saving, state is for display
+    notesContentRef.current = newContent;
+    setNotesContent(newContent);
+    setIsFormDirty(true);
   };
 
   const handleSlInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -518,6 +564,58 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
     setTrade(prev => ({...prev, partialExits: (prev.partialExits || []).filter((_, i) => i !== index)}));
   };
   
+  const performSave = () => {
+    const sanitizedPyramids = (trade.pyramids || []).map(p => ({
+        ...p,
+        price: isNaN(p.price) ? 0 : p.price,
+        quantity: isNaN(p.quantity) ? 0 : p.quantity,
+    }));
+
+    const sanitizedPartialExits = (trade.partialExits || []).map(pe => ({
+        ...pe,
+        price: isNaN(pe.price) ? 0 : pe.price,
+        quantity: isNaN(pe.quantity) ? 0 : pe.quantity,
+    }));
+
+    const fullTradeObject: Trade = {
+      ...trade,
+      entryPrice: isNaN(trade.entryPrice) ? 0 : trade.entryPrice,
+      quantity: isNaN(trade.quantity) ? 0 : trade.quantity,
+      initialSl: isNaN(trade.initialSl) ? 0 : trade.initialSl,
+      exitPrice: trade.exitPrice && !isNaN(trade.exitPrice) ? trade.exitPrice : undefined,
+      pyramids: sanitizedPyramids,
+      partialExits: sanitizedPartialExits,
+      notes: notesContentRef.current, // Include current notes content from ref
+      id: existingTrade?.id || `trade-${Date.now()}`,
+      strategyId: strategyId,
+      date: new Date(trade.date).toISOString()
+    };
+    
+    const stats = getTradeStats(fullTradeObject);
+    const initialInvestment = fullTradeObject.entryPrice * fullTradeObject.quantity;
+
+    // Only auto-calculate status if it wasn't manually set
+    if (!fullTradeObject.statusManuallySet) {
+      if (stats.isClosed) {
+        // Use calculateTradeStatus utility with ±0.5% threshold based on initial entry
+        fullTradeObject.status = calculateTradeStatus(stats, initialInvestment);
+        fullTradeObject.statusManuallySet = false; // Mark as auto-calculated
+        
+        if (stats.avgExitPrice > 0) {
+          fullTradeObject.exitPrice = stats.avgExitPrice;
+        }
+      } else {
+        fullTradeObject.status = 'open';
+        fullTradeObject.exitPrice = undefined;
+        fullTradeObject.statusManuallySet = false;
+      }
+    }
+    // If statusManuallySet is true, keep the user's manual selection
+
+    onSave(fullTradeObject);
+    setIsFormDirty(false);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -545,55 +643,18 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
       }
       return;
     }
-    
-    const sanitizedPyramids = (trade.pyramids || []).map(p => ({
-        ...p,
-        price: isNaN(p.price) ? 0 : p.price,
-        quantity: isNaN(p.quantity) ? 0 : p.quantity,
-    }));
 
-    const sanitizedPartialExits = (trade.partialExits || []).map(pe => ({
-        ...pe,
-        price: isNaN(pe.price) ? 0 : pe.price,
-        quantity: isNaN(pe.quantity) ? 0 : pe.quantity,
-    }));
-
-    const fullTradeObject: Trade = {
-      ...trade,
-      entryPrice: isNaN(trade.entryPrice) ? 0 : trade.entryPrice,
-      quantity: isNaN(trade.quantity) ? 0 : trade.quantity,
-      initialSl: isNaN(trade.initialSl) ? 0 : trade.initialSl,
-      exitPrice: trade.exitPrice && !isNaN(trade.exitPrice) ? trade.exitPrice : undefined,
-      pyramids: sanitizedPyramids,
-      partialExits: sanitizedPartialExits,
-      id: existingTrade?.id || `trade-${Date.now()}`,
-      strategyId: strategyId,
-      date: new Date(trade.date).toISOString()
-    };
-    
-    const stats = getTradeStats(fullTradeObject);
-
-    if (stats.isClosed) {
-      const plPercentage = stats.totalInvested > 0 ? (stats.realizedPL / stats.totalInvested) * 100 : 0;
-      
-      if (plPercentage >= -1.5 && plPercentage <= 1.5) {
-        fullTradeObject.status = 'breakeven';
-      } else if (stats.realizedPL > 0) {
-        fullTradeObject.status = 'win';
-      } else {
-        fullTradeObject.status = 'loss';
-      }
-      
-      if (stats.avgExitPrice > 0) {
-        fullTradeObject.exitPrice = stats.avgExitPrice;
-      }
-    } else {
-       fullTradeObject.status = 'open';
-       fullTradeObject.exitPrice = undefined;
-    }
-
-    onSave(fullTradeObject);
+    performSave();
   };
+
+  const handleCancel = () => {
+    if (isFormDirty) {
+      setShowCancelDialog(true);
+    } else {
+      onCancel();
+    }
+  };
+
 
   const isClosable = trade.status !== 'open' && (trade.partialExits || []).length === 0;
   const tradeStats = getTradeStats({ ...trade, id: '', strategyId: '' });
@@ -701,7 +762,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
 
       <div>
         <label className="block text-sm font-semibold text-[#E0E0E0] mb-3">Notes</label>
-        <RichTextEditor content={trade.notes} onSave={handleNotesChange} />
+        <RichTextEditor content={notesContent} onSave={handleNotesChange} onContentChange={handleNotesContentChange} hideSaveButton={true} />
       </div>
 
       <div className="glass-card p-3 md:p-6 rounded-xl space-y-3 md:space-y-5">
@@ -845,7 +906,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
 
       </div>
       <div className="flex flex-col md:flex-row justify-end gap-3 md:gap-4 pt-3 md:pt-6 border-t border-[rgba(255,255,255,0.1)] mt-auto md:mt-0">
-        <button type="button" onClick={onCancel} 
+        <button type="button" onClick={handleCancel} 
                 className="w-full md:w-auto bg-[#2C2C2C] hover:bg-[#3f3f46] text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]">
           Cancel
         </button>
@@ -855,6 +916,19 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
           Save Trade
         </button>
       </div>
+
+      {/* Form Cancellation Confirmation Dialog */}
+      <ConfirmationModal
+        isOpen={showCancelDialog}
+        onClose={() => setShowCancelDialog(false)}
+        onConfirm={() => {
+          setShowCancelDialog(false);
+          onCancel();
+        }}
+        title="Unsaved Changes"
+        message="You have unsaved changes. Do you want to continue without saving?"
+        confirmButtonText="Continue"
+      />
     </form>
   );
 };

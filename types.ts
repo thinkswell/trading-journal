@@ -33,6 +33,7 @@ export interface Trade {
   pyramids: PyramidEntry[];
   trailingStops: TrailingStop[];
   partialExits: PartialExit[];
+  statusManuallySet?: boolean;
 }
 
 export interface Strategy {

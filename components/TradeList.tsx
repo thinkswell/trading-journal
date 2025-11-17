@@ -7,6 +7,7 @@ import { EditIcon } from './icons/EditIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { ExternalLinkIcon } from './icons/ExternalLinkIcon';
 import { openTradingView } from '../lib/tradingViewUtils';
+import { FiAlertTriangle } from 'react-icons/fi';
 
 type SortOption = 'date' | 'asset' | 'percentInvested';
 
@@ -51,6 +52,16 @@ const TradeRow: React.FC<{
             <td className="p-4">
               <div className="flex items-center gap-2">
                 <span className="font-mono font-bold text-white">{trade.asset}</span>
+                {(!trade.initialSl || trade.initialSl === 0 || isNaN(trade.initialSl)) && (
+                  <div className="relative group/warning">
+                    <FiAlertTriangle className="w-4 h-4 text-yellow-400" />
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/warning:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+                      <span>
+                        <strong className="text-yellow-300">Heads up!</strong> Please set a stop loss for this trade.
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={(e) => openTradingView(trade.asset, e)}
                   className="text-[#A0A0A0] hover:text-[#6A5ACD] hover:bg-[#6A5ACD]/10 p-1 rounded transition-all duration-200 opacity-0 group-hover:opacity-100"
@@ -114,6 +125,16 @@ const TradeCard: React.FC<{
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <span className="font-mono font-bold text-white text-lg">{trade.asset}</span>
+            {(!trade.initialSl || trade.initialSl === 0 || isNaN(trade.initialSl)) && (
+              <div className="relative group/warning">
+                <FiAlertTriangle className="w-4 h-4 text-yellow-400" />
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/warning:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+                    <span>
+                      <strong className="text-yellow-300">Heads up!</strong> Please set a stop loss for this trade.
+                    </span>
+                </div>
+              </div>
+            )}
             <button
               onClick={(e) => openTradingView(trade.asset, e)}
               className="text-[#A0A0A0] hover:text-[#6A5ACD] hover:bg-[#6A5ACD]/10 p-1.5 rounded transition-all duration-200"

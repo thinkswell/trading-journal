@@ -1,4 +1,4 @@
-import { Trade } from '../types';
+import { Trade, TradeStatus } from '../types';
 
 export interface TradeStats {
   totalBoughtQty: number;
@@ -15,6 +15,32 @@ export interface TradeStats {
   initialTotalRisk: number;
   rMultiple: number;
 }
+
+/**
+ * Calculates the trade status based on realized P/L and initial investment
+ * Uses ±0.5% threshold for breakeven based on initial entry price
+ * @param stats - Trade statistics from getTradeStats
+ * @param initialInvestment - Initial entry investment (entryPrice * quantity)
+ * @returns Calculated trade status
+ */
+export const calculateTradeStatus = (stats: TradeStats, initialInvestment: number): TradeStatus => {
+  // If trade is not closed, status should remain 'open'
+  if (!stats.isClosed) {
+    return 'open';
+  }
+
+  // Calculate P/L percentage based on initial entry investment
+  const plPercentage = initialInvestment > 0 ? (stats.realizedPL / initialInvestment) * 100 : 0;
+
+  // Breakeven if within ±0.5% of initial entry
+  if (plPercentage >= -0.5 && plPercentage <= 0.5) {
+    return 'breakeven';
+  } else if (stats.realizedPL > 0) {
+    return 'win';
+  } else {
+    return 'loss';
+  }
+};
 
 export const getTradeStats = (trade: Trade): TradeStats => {
   const initialInvestment = trade.entryPrice * trade.quantity;

@@ -1,10 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { FiBold, FiItalic, FiUnderline, FiLink, FiImage } from 'react-icons/fi';
 import Modal from './Modal';
 
 interface RichTextEditorProps {
     content: string;
     onSave: (newContent: string) => void;
+    onContentChange?: (newContent: string) => void;
+    hideSaveButton?: boolean;
 }
 
 const EditorButton: React.FC<{ onMouseDown: (e: React.MouseEvent) => void, children: React.ReactNode, title: string }> = ({ onMouseDown, children, title }) => (
@@ -18,13 +20,16 @@ const EditorButton: React.FC<{ onMouseDown: (e: React.MouseEvent) => void, child
     </button>
 );
 
-const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave }) => {
+const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave, onContentChange, hideSaveButton = false }) => {
     const editorRef = useRef<HTMLDivElement>(null);
     const imageInputRef = useRef<HTMLInputElement>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [isUrlModalOpen, setIsUrlModalOpen] = useState(false);
     const [urlInput, setUrlInput] = useState('');
     const savedRange = useRef<Range | null>(null);
+    const isUserTypingRef = useRef(false);
+    const lastContentRef = useRef<string>('');
+    const isInitialMountRef = useRef(true);
 
     const executeCommand = (command: string, value?: string) => {
         if (savedRange.current) {
@@ -114,6 +119,38 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave }) => {
         document.execCommand('insertHTML', false, text);
     };
 
+    // Update editor content when content prop changes (for prefilling notes)
+    // Only update if user is NOT currently typing to avoid cursor jumping
+    useEffect(() => {
+        if (editorRef.current) {
+            // On initial mount, set the content
+            if (isInitialMountRef.current) {
+                editorRef.current.innerHTML = content || '';
+                lastContentRef.current = (content || '').trim();
+                isInitialMountRef.current = false;
+            } 
+            // Only update if user is NOT typing and content actually changed from outside
+            else if (!isUserTypingRef.current) {
+                const currentContent = editorRef.current.innerHTML || '';
+                const normalizedCurrent = currentContent.trim();
+                const normalizedProp = (content || '').trim();
+                
+                // Update if content prop is different from last known external content
+                // This handles cases where trade is saved from form and detail page needs to update
+                if (normalizedProp !== lastContentRef.current) {
+                    // Always update when prop content differs from last known external content
+                    // This ensures updates when trade is saved from form
+                    editorRef.current.innerHTML = content || '';
+                    lastContentRef.current = normalizedProp;
+                } else if (normalizedProp === lastContentRef.current && normalizedProp !== normalizedCurrent) {
+                    // If prop matches last known but editor content is different, 
+                    // sync to prop (external update took precedence, e.g., from form save)
+                    editorRef.current.innerHTML = content || '';
+                }
+            }
+        }
+    }, [content]);
+
     return (
         <>
             <div className="glass-card rounded-xl overflow-hidden">
@@ -140,23 +177,36 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave }) => {
                         accept="image/*"
                         className="hidden"
                     />
-                    <button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="ml-auto bg-gradient-to-r from-[#6A5ACD] to-[#8b5cf6] hover:from-[#8b5cf6] hover:to-[#6A5ACD] text-white font-bold py-2 px-4 rounded-lg text-sm 
-                                  shadow-sm shadow-[#6A5ACD]/10 hover:shadow-md hover:shadow-[#6A5ACD]/15 transition-all duration-200 
-                                  disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                        {isSaving ? 'Saved!' : 'Save Notes'}
-                    </button>
+                    {!hideSaveButton && (
+                        <button
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="ml-auto bg-gradient-to-r from-[#6A5ACD] to-[#8b5cf6] hover:from-[#8b5cf6] hover:to-[#6A5ACD] text-white font-bold py-2 px-4 rounded-lg text-sm 
+                                      shadow-sm shadow-[#6A5ACD]/10 hover:shadow-md hover:shadow-[#6A5ACD]/15 transition-all duration-200 
+                                      disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
+                        >
+                            {isSaving ? 'Saved!' : 'Save Notes'}
+                        </button>
+                    )}
                 </div>
                 <div
                     ref={editorRef}
                     contentEditable={true}
                     suppressContentEditableWarning={true}
                     onPaste={handlePaste}
+                    onInput={(e) => {
+                        if (editorRef.current) {
+                            isUserTypingRef.current = true;
+                            if (onContentChange) {
+                                onContentChange(editorRef.current.innerHTML);
+                            }
+                            // Reset flag after a short delay
+                            setTimeout(() => {
+                                isUserTypingRef.current = false;
+                            }, 200);
+                        }
+                    }}
                     className="prose prose-invert max-w-none p-5 min-h-[200px] focus:outline-none focus:ring-2 focus:ring-[#6A5ACD]/50 rounded-b-xl text-[#E0E0E0] bg-[rgba(255,255,255,0.02)]"
-                    dangerouslySetInnerHTML={{ __html: content }}
                 />
             </div>
             <Modal isOpen={isUrlModalOpen} onClose={() => setIsUrlModalOpen(false)}>

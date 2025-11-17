@@ -42,7 +42,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, size = 'md' })
         style={{ animation: 'scaleIn 0.2s ease-out' }}
       >
         <div className="flex-1 overflow-y-auto md:overflow-visible md:flex-none md:block">
-          {children}
+        {children}
         </div>
       </div>
     </div>

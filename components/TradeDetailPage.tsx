@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Trade, Strategy } from '../types';
-import { getTradeStats } from '../lib/tradeCalculations';
+import { getTradeStats, calculateTradeStatus } from '../lib/tradeCalculations';
 import { statusColorMap } from './TradeList';
 import RichTextEditor from './RichTextEditor';
 import { EditIcon } from './icons/EditIcon';
@@ -40,6 +40,27 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
   const plColor = stats.realizedPL > 0 ? 'text-[#28A745]' : stats.realizedPL < 0 ? 'text-[#DC3545]' : 'text-gray-300';
   
   const entries = [{ id: 'initial', price: trade.entryPrice, quantity: trade.quantity, type: 'Initial Entry' }, ...trade.pyramids.map(p => ({...p, type: 'Pyramid'}))];
+
+  // Dynamic status recalculation - only update if status wasn't manually set
+  useEffect(() => {
+    // Only recalculate if status wasn't manually set
+    if (trade.statusManuallySet !== true) {
+      // Recalculate stats to get latest values
+      const currentStats = getTradeStats(trade);
+      const initialInvestment = trade.entryPrice * trade.quantity;
+      const calculatedStatus = calculateTradeStatus(currentStats, initialInvestment);
+      
+      // Only update if the calculated status differs from current status
+      if (calculatedStatus !== trade.status) {
+        onSaveTrade({ 
+          ...trade, 
+          status: calculatedStatus,
+          statusManuallySet: false // Mark as auto-calculated
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trade.entryPrice, trade.quantity, trade.exitPrice, trade.partialExits, trade.status, trade.statusManuallySet, trade.pyramids]);
 
   const handleNotesSave = (newNotes: string) => {
     onSaveTrade({ ...trade, notes: newNotes });
@@ -161,22 +182,41 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                  <div className="glass-card p-4 rounded-xl">
                     <h3 className="font-bold text-[#E0E0E0] mb-3">Risk Management</h3>
                     <ul className="text-sm space-y-2">
-                        <li className="flex justify-between p-3 bg-[rgba(255,255,255,0.05)] rounded-lg border border-[rgba(255,255,255,0.1)]">
+                        <li className="flex justify-between items-center p-3 bg-[rgba(255,255,255,0.05)] rounded-lg border border-[rgba(255,255,255,0.1)]">
                           <span className="text-[#E0E0E0]">Initial Stop Loss:</span> 
-                          <span className="font-mono font-bold text-white">{formatCurrency(trade.initialSl, currency)}</span>
+                          <div className="flex flex-col items-end">
+                            <span className="font-mono font-bold text-white">{formatCurrency(trade.initialSl, currency)}</span>
+                            {stats.avgEntryPrice > 0 && trade.initialSl > 0 && (
+                              <span className="text-xs text-[#A0A0A0] mt-1">
+                                ({(((stats.avgEntryPrice - trade.initialSl) / stats.avgEntryPrice) * 100).toFixed(2)}%)
+                              </span>
+                            )}
+                          </div>
                         </li>
-                        {trade.trailingStops.map((ts, index) => (
-                            <li key={ts.id} className="flex justify-between p-3 bg-[rgba(255,255,255,0.05)] rounded-lg border border-[rgba(255,255,255,0.1)]">
+                        {trade.trailingStops.map((ts, index) => {
+                          const slPercentage = stats.avgEntryPrice > 0 && ts.price > 0 
+                            ? (((stats.avgEntryPrice - ts.price) / stats.avgEntryPrice) * 100).toFixed(2)
+                            : null;
+                          return (
+                            <li key={ts.id} className="flex justify-between items-center p-3 bg-[rgba(255,255,255,0.05)] rounded-lg border border-[rgba(255,255,255,0.1)]">
                               <span className="text-[#E0E0E0]">Trailing Stop #{index+1}:</span> 
-                              <span className="font-mono font-bold text-white">{formatCurrency(ts.price, currency)}</span>
+                              <div className="flex flex-col items-end">
+                                <span className="font-mono font-bold text-white">{formatCurrency(ts.price, currency)}</span>
+                                {slPercentage && (
+                                  <span className="text-xs text-[#A0A0A0] mt-1">
+                                    ({slPercentage}%)
+                                  </span>
+                                )}
+                              </div>
                             </li>
-                        ))}
+                          );
+                        })}
                     </ul>
                 </div>
             </div>
             <div className="space-y-4 md:space-y-5">
                  <h2 className="text-xl md:text-2xl font-bold text-white flex items-center gap-3"><DocumentTextIcon /> Trade Analysis & Notes</h2>
-                 <RichTextEditor content={trade.notes} onSave={handleNotesSave} />
+                 <RichTextEditor content={trade.notes || ''} onSave={handleNotesSave} />
             </div>
         </div>
     </div>

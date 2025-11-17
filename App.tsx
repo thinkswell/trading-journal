@@ -17,6 +17,7 @@ import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import TradeForm from './components/TradeForm';
 import { SettingsProvider } from './contexts/SettingsContext';
+import { hasNewData, mergeStrategies } from './lib/firebaseSyncUtils';
 
 // Helper function to remove undefined values from objects/arrays for Firestore compatibility
 const removeUndefinedValues = (obj: any): any => {
@@ -84,7 +85,7 @@ const AppContent: React.FC = () => {
     setActiveView(view);
   };
 
-  // Sync function to fetch latest data from Firebase
+  // Sync function to fetch latest data from Firebase and merge intelligently
   const syncFromFirebase = async (user: User | null, setLoadingState: boolean = false) => {
     if (!user) {
       return;
@@ -98,7 +99,21 @@ const AppContent: React.FC = () => {
       const userDoc = await getDoc(userDocRef);
       if (userDoc.exists()) {
         const data = userDoc.data();
-        if(data.strategies) setStrategies(data.strategies);
+        const remoteStrategies = data.strategies as Strategy[] | undefined;
+        
+        if (remoteStrategies && Array.isArray(remoteStrategies)) {
+          // Check if remote has new data
+          if (hasNewData(strategies, remoteStrategies)) {
+            // Merge remote data with local data (preserves local edits)
+            const mergedStrategies = mergeStrategies(strategies, remoteStrategies);
+            setStrategies(mergedStrategies);
+            console.log('Synced new data from Firebase');
+          } else {
+            console.log('No new data from Firebase, keeping local data');
+          }
+        }
+        
+        // Update profile info if present (these are less likely to conflict)
         if(data.firstName) setFirstName(data.firstName);
         if(data.lastName) setLastName(data.lastName);
       }
