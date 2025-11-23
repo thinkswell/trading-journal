@@ -322,6 +322,13 @@ const AppContent: React.FC = () => {
     const handlePopState = (event: PopStateEvent) => {
       const pathname = window.location.pathname;
       const view = getViewFromPath(pathname, strategies);
+      const expectedPath = getPathFromView(view, strategies);
+      
+      // If route is not found, redirect to dashboard
+      if (view === 'dashboard' && pathname !== expectedPath) {
+        window.history.replaceState({ view: 'dashboard' }, '', expectedPath);
+      }
+      
       // Use functional update to capture current activeView as previousView
       setActiveView(currentView => {
         setPreviousView(currentView);
@@ -334,6 +341,24 @@ const AppContent: React.FC = () => {
       window.removeEventListener('popstate', handlePopState);
     };
   }, [strategies]); // Only depend on strategies, not activeView
+
+  // Ensure URL matches view (redirect unknown routes to dashboard)
+  useEffect(() => {
+    if (!hasInitializedFromUrl.current || loading) return;
+    
+    const pathname = window.location.pathname;
+    const expectedView = getViewFromPath(pathname, strategies);
+    const expectedPath = getPathFromView(expectedView, strategies);
+    
+    // If the URL path doesn't match what it should be (unknown route detected), redirect
+    if (pathname !== expectedPath) {
+      window.history.replaceState({ view: expectedView }, '', expectedPath);
+      if (activeView !== expectedView) {
+        setPreviousView(activeView);
+        setActiveView(expectedView);
+      }
+    }
+  }, [strategies, loading]); // Only check when strategies or loading state changes, not on every activeView change
 
   // Update URL when strategies change (in case current strategy/trade was deleted)
   useEffect(() => {
@@ -384,6 +409,34 @@ const AppContent: React.FC = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
+
+  // Validate URL when window gets focus (catches edge cases where URL might be invalid)
+  useEffect(() => {
+    if (!hasInitializedFromUrl.current || loading) return;
+
+    const handleFocus = () => {
+      const pathname = window.location.pathname;
+      const expectedView = getViewFromPath(pathname, strategies);
+      const expectedPath = getPathFromView(expectedView, strategies);
+      
+      // If URL doesn't match expected path (unknown route), redirect to dashboard
+      if (pathname !== expectedPath) {
+        window.history.replaceState({ view: expectedView }, '', expectedPath);
+        setActiveView(currentView => {
+          if (currentView !== expectedView) {
+            setPreviousView(currentView);
+          }
+          return expectedView;
+        });
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [strategies, loading]);
 
   const saveStrategies = async (newStrategies: Strategy[]) => {
     // Always update localStorage first
