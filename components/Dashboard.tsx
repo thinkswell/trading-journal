@@ -85,7 +85,8 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
       amountInvested,
       riskOnCapital,
       gainOnCapital,
-      totalCapital
+      totalCapital,
+      totalRisk
     };
   }, [filteredTrades, strategies]);
   
@@ -140,7 +141,7 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
       { key: 'totalPL' as StatKey, title: 'Total P/L', value: formatCurrency(stats.totalPL, currency), icon: <BagOfMoneyIcon />, isPositive: stats.totalPL >= 0 },
       { key: 'gainOnCapital' as StatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0 },
       { key: 'amountInvested' as StatKey, title: 'Amount Invested', value: formatCurrency(stats.amountInvested, currency), icon: <ScaleIcon />, isPositive: undefined },
-      { key: 'riskOnCapital' as StatKey, title: '% Risk on Capital', value: `${stats.riskOnCapital.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskOnCapital < 5 },
+      { key: 'riskOnCapital' as StatKey, title: '% Risk on Capital', value: `${stats.riskOnCapital.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskOnCapital < 5, sublabel: formatCurrency(stats.totalRisk, currency) },
       { key: 'winRate' as StatKey, title: 'Win Rate', value: `${stats.winRate.toFixed(1)}%`, icon: <TrendingUpIcon />, isPositive: stats.winRate >= 50 },
       { key: 'profitFactor' as StatKey, title: 'Profit Factor', value: stats.profitFactor.toFixed(2), icon: <ScaleIcon />, isPositive: stats.profitFactor >= 1 },
       { key: 'totalTrades' as StatKey, title: 'Total Trades', value: stats.totalTrades.toString(), icon: <CalculatorIcon />, isPositive: undefined },
@@ -182,7 +183,7 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
       {/* Desktop: Show all stats in grid */}
       <div className="hidden md:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {allStats.map(stat => (
-          <StatCard key={stat.key} icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+          <StatCard key={stat.key} icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} sublabel={stat.sublabel} />
         ))}
       </div>
 
@@ -192,7 +193,7 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
         <div className="flex flex-col gap-4">
           {pinnedStatsList.map(stat => (
             <div key={stat.key} className="relative">
-              <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+              <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} sublabel={stat.sublabel} />
               <button
                 onClick={() => handlePinStat(stat.key)}
                 className="absolute top-2 right-2 p-1.5 rounded-lg bg-[#6A5ACD]/20 hover:bg-[#6A5ACD]/30 text-[#6A5ACD] transition-all duration-200"
@@ -222,7 +223,7 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
               <div className="grid grid-cols-2 gap-4 p-4 border-t border-[rgba(255,255,255,0.1)]">
                 {unpinnedStatsList.map(stat => (
                   <div key={stat.key} className="relative">
-                    <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+                    <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} sublabel={stat.sublabel} />
                     <button
                       onClick={() => handlePinStat(stat.key)}
                       className="absolute top-2 right-2 p-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] hover:bg-[#6A5ACD]/30 text-[#A0A0A0] hover:text-[#6A5ACD] transition-all duration-200"

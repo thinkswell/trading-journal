@@ -17,6 +17,28 @@ export interface TradeStats {
 }
 
 /**
+ * Gets the effective stop loss for a trade
+ * Uses the highest trailing stop price if any exist, otherwise falls back to initial stop loss
+ * @param trade - The trade to get effective stop loss for
+ * @returns The effective stop loss price (highest trailing stop, or initialSl, or 0)
+ */
+const getEffectiveStopLoss = (trade: Trade): number => {
+  // If trailing stops exist, use the highest one (most protective)
+  if (trade.trailingStops && trade.trailingStops.length > 0) {
+    const trailingStopPrices = trade.trailingStops
+      .map(ts => ts.price)
+      .filter(price => price > 0);
+    
+    if (trailingStopPrices.length > 0) {
+      return Math.max(...trailingStopPrices);
+    }
+  }
+  
+  // Fall back to initial stop loss
+  return trade.initialSl || 0;
+};
+
+/**
  * Calculates the trade status based on realized P/L and initial investment
  * Uses ±0.5% threshold for breakeven based on initial entry price
  * @param stats - Trade statistics from getTradeStats
@@ -84,8 +106,12 @@ export const getTradeStats = (trade: Trade): TradeStats => {
   }
   
   const currentValue = currentHoldingsQty * avgEntryPrice; // Based on avg entry, not a live price
-  const totalRiskValue = currentHoldingsQty * (avgEntryPrice - trade.initialSl);
+  
+  // Use effective stop loss (trailing stop if available, otherwise initial SL) for current risk
+  const effectiveStopLoss = getEffectiveStopLoss(trade);
+  const totalRiskValue = currentHoldingsQty * (avgEntryPrice - effectiveStopLoss);
 
+  // Initial total risk always uses initial SL (historical risk at trade entry)
   const initialTotalRisk = totalBoughtQty > 0 ? totalBoughtQty * (avgEntryPrice - trade.initialSl) : 0;
   const rMultiple = isClosed && initialTotalRisk > 0 ? realizedPL / initialTotalRisk : 0;
 

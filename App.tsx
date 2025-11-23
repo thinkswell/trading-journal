@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Strategy, Trade } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import Sidebar from './components/Sidebar';
@@ -62,6 +62,141 @@ const initialStrategies: Strategy[] = [
     }
 ];
 
+// URL routing helper functions
+// Convert strategy name to URL-friendly slug
+const nameToSlug = (name: string): string => {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // Remove special characters except word chars, spaces, and hyphens
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
+    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+};
+
+// Build a map of strategy slugs to strategy IDs, handling duplicates with counters
+const buildStrategySlugMap = (strategies: Strategy[]): Map<string, string> => {
+  const slugMap = new Map<string, string>();
+  const slugCounts = new Map<string, number>();
+  
+  // First pass: count occurrences of each slug
+  strategies.forEach(strategy => {
+    const baseSlug = nameToSlug(strategy.name);
+    slugCounts.set(baseSlug, (slugCounts.get(baseSlug) || 0) + 1);
+  });
+  
+  // Second pass: create slugs with counters for duplicates
+  const usedSlugs = new Map<string, number>();
+  strategies.forEach(strategy => {
+    const baseSlug = nameToSlug(strategy.name);
+    const count = slugCounts.get(baseSlug) || 1;
+    
+    let finalSlug: string;
+    if (count > 1) {
+      // Multiple strategies with same name, need counter
+      const currentCount = (usedSlugs.get(baseSlug) || 0) + 1;
+      usedSlugs.set(baseSlug, currentCount);
+      finalSlug = currentCount === 1 ? baseSlug : `${baseSlug}-${currentCount}`;
+    } else {
+      // Unique name, no counter needed
+      finalSlug = baseSlug;
+    }
+    
+    slugMap.set(finalSlug, strategy.id);
+  });
+  
+  return slugMap;
+};
+
+// Build reverse map: strategy ID to slug
+const buildStrategyIdToSlugMap = (strategies: Strategy[]): Map<string, string> => {
+  const idToSlugMap = new Map<string, string>();
+  const slugMap = buildStrategySlugMap(strategies);
+  
+  // Reverse the slug map
+  slugMap.forEach((id, slug) => {
+    idToSlugMap.set(id, slug);
+  });
+  
+  return idToSlugMap;
+};
+
+const getViewFromPath = (pathname: string, strategies: Strategy[]): string => {
+  // Remove leading/trailing slashes and split
+  const path = pathname.replace(/^\/+|\/+$/g, '');
+  
+  if (!path || path === 'dashboard') {
+    return 'dashboard';
+  }
+  
+  if (path === 'profile') {
+    return 'profile';
+  }
+  
+  // Check for strategy route: /strategy/:slug
+  const strategyMatch = path.match(/^strategy\/(.+)$/);
+  if (strategyMatch) {
+    const strategySlug = decodeURIComponent(strategyMatch[1]);
+    const slugMap = buildStrategySlugMap(strategies);
+    const strategyId = slugMap.get(strategySlug);
+    
+    if (strategyId) {
+      // Validate strategy still exists
+      const strategy = strategies.find(s => s.id === strategyId);
+      if (strategy) {
+        return strategyId;
+      }
+    }
+    // Invalid strategy, redirect to dashboard
+    return 'dashboard';
+  }
+  
+  // Check for trade route: /trade/:id
+  const tradeMatch = path.match(/^trade\/(.+)$/);
+  if (tradeMatch) {
+    const tradeId = decodeURIComponent(tradeMatch[1]);
+    // Validate trade exists
+    for (const strategy of strategies) {
+      const trade = strategy.trades.find(t => t.id === tradeId);
+      if (trade) {
+        return `trade/${tradeId}`;
+      }
+    }
+    // Invalid trade, redirect to dashboard
+    return 'dashboard';
+  }
+  
+  // Unknown route, default to dashboard
+  return 'dashboard';
+};
+
+const getPathFromView = (view: string, strategies: Strategy[]): string => {
+  if (view === 'dashboard') {
+    return '/dashboard';
+  }
+  
+  if (view === 'profile') {
+    return '/profile';
+  }
+  
+  // Check if it's a trade view
+  if (view.startsWith('trade/')) {
+    const tradeId = view.split('/')[1];
+    return `/trade/${encodeURIComponent(tradeId)}`;
+  }
+  
+  // It's a strategy ID, convert to slug
+  const idToSlugMap = buildStrategyIdToSlugMap(strategies);
+  const slug = idToSlugMap.get(view);
+  
+  if (slug) {
+    return `/strategy/${encodeURIComponent(slug)}`;
+  }
+  
+  // Fallback to strategy ID if slug not found (shouldn't happen)
+  return `/strategy/${encodeURIComponent(view)}`;
+};
+
 const AppContent: React.FC = () => {
   const [strategies, setStrategies] = useLocalStorage<Strategy[]>('trading-journal-strategies', initialStrategies);
   const [firstName, setFirstName] = useState('');
@@ -79,10 +214,14 @@ const AppContent: React.FC = () => {
 
   const [isTradeFormOpen, setIsTradeFormOpen] = useState(false);
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
+  const hasInitializedFromUrl = useRef(false);
 
   const navigateTo = (view: string) => {
     setPreviousView(activeView);
     setActiveView(view);
+    // Update URL without page reload
+    const path = getPathFromView(view, strategies);
+    window.history.pushState({ view }, '', path);
   };
 
   // Sync function to fetch latest data from Firebase and merge intelligently
@@ -157,6 +296,74 @@ const AppContent: React.FC = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  // Initialize view from URL after strategies are loaded (only once)
+  useEffect(() => {
+    // Only initialize once when loading is complete
+    if (loading || hasInitializedFromUrl.current) return;
+    
+    const pathname = window.location.pathname;
+    const urlView = getViewFromPath(pathname, strategies);
+    
+    // Set initial view from URL
+    setActiveView(urlView);
+    setPreviousView('dashboard');
+    hasInitializedFromUrl.current = true;
+    
+    // Update URL to match view (replace state to avoid adding to history)
+    const path = getPathFromView(urlView, strategies);
+    if (pathname !== path) {
+      window.history.replaceState({ view: urlView }, '', path);
+    }
+  }, [loading, strategies]); // Run when loading completes and strategies are available
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      const pathname = window.location.pathname;
+      const view = getViewFromPath(pathname, strategies);
+      // Use functional update to capture current activeView as previousView
+      setActiveView(currentView => {
+        setPreviousView(currentView);
+        return view;
+      });
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [strategies]); // Only depend on strategies, not activeView
+
+  // Update URL when strategies change (in case current strategy/trade was deleted)
+  useEffect(() => {
+    // Check if current view is still valid
+    if (activeView === 'dashboard' || activeView === 'profile') {
+      return; // These are always valid
+    }
+
+    if (activeView.startsWith('trade/')) {
+      const tradeId = activeView.split('/')[1];
+      const tradeExists = strategies.some(s => s.trades.some(t => t.id === tradeId));
+      if (!tradeExists) {
+        // Trade was deleted, redirect to dashboard
+        const path = getPathFromView('dashboard', strategies);
+        window.history.replaceState({ view: 'dashboard' }, '', path);
+        setActiveView('dashboard');
+        setPreviousView('dashboard');
+      }
+    } else {
+      // It's a strategy view
+      const strategyExists = strategies.some(s => s.id === activeView);
+      if (!strategyExists) {
+        // Strategy was deleted, redirect to dashboard
+        const path = getPathFromView('dashboard', strategies);
+        window.history.replaceState({ view: 'dashboard' }, '', path);
+        setActiveView('dashboard');
+        setPreviousView('dashboard');
+      }
+    }
+  }, [strategies, activeView]);
 
   // Sync from Firebase when tab becomes visible
   useEffect(() => {

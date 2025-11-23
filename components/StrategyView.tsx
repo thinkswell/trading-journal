@@ -90,13 +90,26 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
 
     const currentCapital = strategy.initialCapital + totalPL;
     const totalTrades = strategy.trades.length;
+    const openTradesCount = totalTrades - closedTrades.length;
+    const closedTradesCount = closedTrades.length;
     const winningTrades = closedTrades.filter(t => getTradeStats(t).realizedPL > 0);
     const winRate = closedTrades.length > 0 ? (winningTrades.length / closedTrades.length) * 100 : 0;
     
     const riskPercent = strategy.initialCapital > 0 ? (totalRisk / strategy.initialCapital) * 100 : 0;
     const gainOnCapital = strategy.initialCapital > 0 ? (totalPL / strategy.initialCapital) * 100 : 0;
 
-    return { totalPL, currentCapital, winRate, totalTrades, amountInvested, riskPercent, gainOnCapital };
+    return { 
+      totalPL, 
+      currentCapital, 
+      winRate, 
+      totalTrades, 
+      amountInvested, 
+      riskPercent, 
+      gainOnCapital, 
+      totalRisk,
+      openTradesCount,
+      closedTradesCount
+    };
   }, [strategy]);
 
   // Define all stats with their keys
@@ -106,7 +119,7 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
       { key: 'totalPL' as StrategyStatKey, title: 'Strategy P/L', value: formatCurrency(stats.totalPL, currency), icon: <BagOfMoneyIcon />, isPositive: stats.totalPL >= 0 },
       { key: 'gainOnCapital' as StrategyStatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0 },
       { key: 'amountInvested' as StrategyStatKey, title: 'Amount Invested', value: formatCurrency(stats.amountInvested, currency), icon: <ScaleIcon />, isPositive: undefined },
-      { key: 'riskPercent' as StrategyStatKey, title: '% Risk', value: `${stats.riskPercent.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskPercent < 5 },
+      { key: 'riskPercent' as StrategyStatKey, title: '% Risk', value: `${stats.riskPercent.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskPercent < 5, sublabel: formatCurrency(stats.totalRisk, currency) },
       { key: 'winRate' as StrategyStatKey, title: 'Win Rate', value: `${stats.winRate.toFixed(1)}%`, icon: <TrendingUpIcon />, isPositive: stats.winRate >= 50 },
       { key: 'totalTrades' as StrategyStatKey, title: 'Total Trades', value: stats.totalTrades.toString(), icon: <CalculatorIcon />, isPositive: undefined },
     ];
@@ -198,7 +211,7 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
       {/* Desktop: Show all stats in grid */}
       <div className="hidden md:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         {allStats.map(stat => (
-          <StatCard key={stat.key} icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+          <StatCard key={stat.key} icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} sublabel={stat.sublabel} />
         ))}
       </div>
 
@@ -208,7 +221,7 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
         <div className="flex flex-col gap-4">
           {pinnedStatsList.map(stat => (
             <div key={stat.key} className="relative">
-              <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+              <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} sublabel={stat.sublabel} />
               <button
                 onClick={() => handlePinStat(stat.key)}
                 className="absolute top-2 right-2 p-1.5 rounded-lg bg-[#6A5ACD]/20 hover:bg-[#6A5ACD]/30 text-[#6A5ACD] transition-all duration-200"
@@ -238,7 +251,7 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
               <div className="grid grid-cols-2 gap-4 p-4 border-t border-[rgba(255,255,255,0.1)]">
                 {unpinnedStatsList.map(stat => (
                   <div key={stat.key} className="relative">
-                    <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} />
+                    <StatCard icon={stat.icon} title={stat.title} value={stat.value} isPositive={stat.isPositive} sublabel={stat.sublabel} />
                     <button
                       onClick={() => handlePinStat(stat.key)}
                       className="absolute top-2 right-2 p-1.5 rounded-lg bg-[rgba(255,255,255,0.1)] hover:bg-[#6A5ACD]/30 text-[#A0A0A0] hover:text-[#6A5ACD] transition-all duration-200"
@@ -345,7 +358,11 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
         onClose={() => setIsConfirmDeleteOpen(false)}
         onConfirm={handleDeleteStrategy}
         title="Delete Strategy"
-        message={`Are you sure you want to delete the "${strategy.name}" strategy? All associated trades will also be removed. This action cannot be undone.`}
+        message={`Are you sure you want to delete the "${strategy.name}" strategy? All associated trades will also be removed.`}
+        openTradesCount={stats.openTradesCount}
+        closedTradesCount={stats.closedTradesCount}
+        amountInvested={stats.amountInvested}
+        currency={currency}
       />
     </div>
   );

@@ -5,9 +5,10 @@ interface StatCardProps {
   value: string;
   isPositive?: boolean;
   icon?: React.ReactNode;
+  sublabel?: string;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ title, value, isPositive, icon }) => {
+const StatCard: React.FC<StatCardProps> = ({ title, value, isPositive, icon, sublabel }) => {
   const valueColor = isPositive === undefined ? 'text-white' : isPositive ? 'text-[#28A745]' : 'text-[#DC3545]';
   const glowColor = isPositive === undefined ? '' : isPositive ? 'hover:shadow-[#28A745]/5' : 'hover:shadow-[#DC3545]/5';
   
@@ -19,7 +20,12 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, isPositive, icon }) =
         <span className="text-[#A0A0A0] group-hover:text-[#6A5ACD] transition-colors">{icon}</span>
         {title}
       </h3>
-      <p className={`text-3xl md:text-4xl font-extrabold ${valueColor} leading-tight tracking-tight`}>{value}</p>
+      <div>
+        <p className={`text-3xl md:text-4xl font-extrabold ${valueColor} leading-tight tracking-tight`}>{value}</p>
+        {sublabel && (
+          <p className="text-sm text-[#A0A0A0] mt-1">{sublabel}</p>
+        )}
+      </div>
     </div>
   );
 };
