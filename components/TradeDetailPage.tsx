@@ -41,6 +41,25 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
   
   const entries = [{ id: 'initial', price: trade.entryPrice, quantity: trade.quantity, type: 'Initial Entry' }, ...trade.pyramids.map(p => ({...p, type: 'Pyramid'}))];
 
+  // Calculate days held
+  const calculateDaysHeld = (): string | null => {
+    if (trade.status === 'open' || !trade.closeDate) {
+      return null;
+    }
+    
+    const entryDate = new Date(trade.date);
+    const closeDate = new Date(trade.closeDate);
+    const diffTime = closeDate.getTime() - entryDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) {
+      return '1 day';
+    }
+    return `${diffDays} days`;
+  };
+
+  const daysHeld = calculateDaysHeld();
+
   // Dynamic status recalculation - only update if status wasn't manually set
   useEffect(() => {
     // Only recalculate if status wasn't manually set
@@ -50,17 +69,33 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
       const initialInvestment = trade.entryPrice * trade.quantity;
       const calculatedStatus = calculateTradeStatus(currentStats, initialInvestment);
       
-      // Only update if the calculated status differs from current status
-      if (calculatedStatus !== trade.status) {
-        onSaveTrade({ 
+      // Check if trade status needs to be updated
+      const needsStatusUpdate = calculatedStatus !== trade.status;
+      // Check if trade is closed and closeDate needs to be set
+      const needsCloseDateUpdate = currentStats.isClosed && !trade.closeDate;
+      
+      if (needsStatusUpdate || needsCloseDateUpdate) {
+        const updatedTrade = { 
           ...trade, 
           status: calculatedStatus,
-          statusManuallySet: false // Mark as auto-calculated
-        });
+          statusManuallySet: false, // Mark as auto-calculated
+        };
+        
+        // Set closeDate if trade is closed and closeDate is not set
+        if (currentStats.isClosed && !trade.closeDate) {
+          updatedTrade.closeDate = new Date().toISOString();
+        }
+        
+        // Clear closeDate if trade is reopened
+        if (calculatedStatus === 'open' && trade.closeDate) {
+          updatedTrade.closeDate = undefined;
+        }
+        
+        onSaveTrade(updatedTrade);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trade.entryPrice, trade.quantity, trade.exitPrice, trade.partialExits, trade.status, trade.statusManuallySet, trade.pyramids]);
+  }, [trade.entryPrice, trade.quantity, trade.exitPrice, trade.partialExits, trade.status, trade.statusManuallySet, trade.pyramids, trade.closeDate]);
 
   const handleNotesSave = (newNotes: string) => {
     onSaveTrade({ ...trade, notes: newNotes });
@@ -106,6 +141,12 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
             <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-4 flex items-center gap-3">
               <TrendingUpIcon />
               Trade Analytics
+              {daysHeld && (
+                <>
+                  <span className="text-[#A0A0A0] font-normal">|</span>
+                  <span className="text-[#A0A0A0] font-normal">{daysHeld}</span>
+                </>
+              )}
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
                 <DetailStatCard 

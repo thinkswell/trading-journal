@@ -81,6 +81,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
       const initialTrade = {
         ...existingTrade,
         date: new Date(existingTrade.date).toISOString().split('T')[0],
+        closeDate: existingTrade.closeDate ? new Date(existingTrade.closeDate).toISOString().split('T')[0] : undefined,
         partialExits: existingTrade.partialExits || [],
       };
       setTrade(initialTrade);
@@ -228,16 +229,26 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         return '';
       
       case 'exitPrice':
-        if (trade.status !== 'open' && (trade.partialExits || []).length === 0) {
-          if (value === '' || value === null || value === undefined) {
-            return 'Exit price is required when trade is closed';
-          }
-          const exitPrice = parseFloat(value);
-          if (isNaN(exitPrice)) {
-            return 'Exit price must be a valid number';
-          }
-          if (exitPrice <= 0) {
-            return 'Exit price must be greater than 0';
+        if (trade.status !== 'open') {
+          const hasPartialExits = (trade.partialExits || []).length > 0;
+          const tempStats = getTradeStats({ ...trade, id: '', strategyId: '' });
+          const remainingQty = tempStats.totalBoughtQty - tempStats.totalSoldQty;
+          const hasRemainingHoldings = remainingQty > 0;
+          
+          // Exit price is required if:
+          // 1. No partial exits (applies to all holdings)
+          // 2. Has partial exits AND has remaining holdings (applies to remaining holdings)
+          if (!hasPartialExits || (hasPartialExits && hasRemainingHoldings)) {
+            if (value === '' || value === null || value === undefined) {
+              return 'Exit price is required when trade is closed';
+            }
+            const exitPrice = parseFloat(value);
+            if (isNaN(exitPrice)) {
+              return 'Exit price must be a valid number';
+            }
+            if (exitPrice <= 0) {
+              return 'Exit price must be greater than 0';
+            }
           }
         }
         return '';
@@ -328,10 +339,27 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
     
     // Track manual status changes
     if (name === 'status') {
+      setTrade(prev => {
+        const newStatus = value as TradeStatus;
+        // If changing to open, clear closeDate. If changing from open to closed, set closeDate to today
+        let newCloseDate = prev.closeDate;
+        if (newStatus === 'open') {
+          newCloseDate = undefined;
+        } else if (prev.status === 'open' && newStatus !== 'open') {
+          // Trade is being closed for the first time, set closeDate to today
+          newCloseDate = new Date().toISOString().split('T')[0];
+        }
+        return {
+          ...prev,
+          [name]: newStatus,
+          closeDate: newCloseDate,
+          statusManuallySet: true // Mark as manually set when user changes status
+        };
+      });
+    } else if (name === 'closeDate') {
       setTrade(prev => ({ 
         ...prev, 
-        [name]: value,
-        statusManuallySet: true // Mark as manually set when user changes status
+        closeDate: value || undefined
       }));
     } else {
       setTrade(prev => ({ 
@@ -577,18 +605,50 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         quantity: isNaN(pe.quantity) ? 0 : pe.quantity,
     }));
 
+    // Check if we need to add exit price as partial exit for remaining holdings
+    const hasPartialExits = sanitizedPartialExits.length > 0;
+    let finalPartialExits = [...sanitizedPartialExits];
+    let finalExitPrice = trade.exitPrice && !isNaN(trade.exitPrice) ? trade.exitPrice : undefined;
+    
+    // If trade has partial exits, remaining holdings, and exit price is provided,
+    // add it as a partial exit for the remaining quantity
+    if (hasPartialExits && trade.status !== 'open' && trade.exitPrice && !isNaN(trade.exitPrice)) {
+      const tempTradeForStats: Trade = {
+        ...trade,
+        id: existingTrade?.id || `trade-${Date.now()}`,
+        strategyId: strategyId,
+        pyramids: sanitizedPyramids,
+        partialExits: sanitizedPartialExits,
+        exitPrice: undefined, // Don't include exitPrice in calculation
+      };
+      const tempStats = getTradeStats(tempTradeForStats);
+      const remainingQty = tempStats.totalBoughtQty - tempStats.totalSoldQty;
+      
+      if (remainingQty > 0) {
+        // Add exit price as partial exit for remaining quantity
+        finalPartialExits.push({
+          id: `pe-${Date.now()}`,
+          price: trade.exitPrice,
+          quantity: remainingQty
+        });
+        // Don't set exitPrice field - it's now handled as a partial exit
+        finalExitPrice = undefined;
+      }
+    }
+    
     const fullTradeObject: Trade = {
       ...trade,
       entryPrice: isNaN(trade.entryPrice) ? 0 : trade.entryPrice,
       quantity: isNaN(trade.quantity) ? 0 : trade.quantity,
       initialSl: isNaN(trade.initialSl) ? 0 : trade.initialSl,
-      exitPrice: trade.exitPrice && !isNaN(trade.exitPrice) ? trade.exitPrice : undefined,
+      exitPrice: finalExitPrice,
       pyramids: sanitizedPyramids,
-      partialExits: sanitizedPartialExits,
+      partialExits: finalPartialExits,
       notes: notesContentRef.current, // Include current notes content from ref
       id: existingTrade?.id || `trade-${Date.now()}`,
       strategyId: strategyId,
-      date: new Date(trade.date).toISOString()
+      date: new Date(trade.date).toISOString(),
+      closeDate: trade.closeDate ? new Date(trade.closeDate).toISOString() : undefined
     };
     
     const stats = getTradeStats(fullTradeObject);
@@ -601,14 +661,37 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         fullTradeObject.status = calculateTradeStatus(stats, initialInvestment);
         fullTradeObject.statusManuallySet = false; // Mark as auto-calculated
         
-        if (stats.avgExitPrice > 0) {
+        // Only set exitPrice if there are no partial exits (to avoid overriding our new logic)
+        // If there are partial exits, exitPrice should remain undefined (handled as partial exit)
+        if (stats.avgExitPrice > 0 && finalPartialExits.length === 0) {
           fullTradeObject.exitPrice = stats.avgExitPrice;
+        }
+        
+        // Set closeDate to today if trade is closed and closeDate is not already set
+        // This handles both cases: closing via exit price or closing via partial exits
+        if (!fullTradeObject.closeDate) {
+          fullTradeObject.closeDate = new Date().toISOString();
         }
       } else {
         fullTradeObject.status = 'open';
         fullTradeObject.exitPrice = undefined;
+        fullTradeObject.closeDate = undefined; // Clear closeDate when trade is reopened
         fullTradeObject.statusManuallySet = false;
       }
+    } else {
+      // If status is manually set to closed and closeDate is not set, set it to today
+      if (fullTradeObject.status !== 'open' && !fullTradeObject.closeDate) {
+        fullTradeObject.closeDate = new Date().toISOString();
+      }
+      // If status is manually set to open, clear closeDate
+      if (fullTradeObject.status === 'open') {
+        fullTradeObject.closeDate = undefined;
+      }
+    }
+    
+    // Also check if trade closed via partial exits (all holdings sold) and set closeDate
+    if (stats.isClosed && !fullTradeObject.closeDate) {
+      fullTradeObject.closeDate = new Date().toISOString();
     }
     // If statusManuallySet is true, keep the user's manual selection
 
@@ -656,8 +739,15 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
   };
 
 
-  const isClosable = trade.status !== 'open' && (trade.partialExits || []).length === 0;
   const tradeStats = getTradeStats({ ...trade, id: '', strategyId: '' });
+  const hasPartialExits = (trade.partialExits || []).length > 0;
+  const remainingQty = tradeStats.totalBoughtQty - tradeStats.totalSoldQty;
+  const hasRemainingHoldings = remainingQty > 0;
+  
+  // Show exit price field when:
+  // 1. Status is closed AND no partial exits (current behavior)
+  // 2. Status is closed AND has partial exits AND has remaining holdings (new behavior)
+  const isClosable = trade.status !== 'open' && (!hasPartialExits || hasRemainingHoldings);
 
   return (
     <form onSubmit={handleSubmit} className="p-3 md:p-6 space-y-4 md:space-y-8 h-full md:h-auto md:max-h-[85vh] md:overflow-y-auto flex flex-col md:block">
@@ -738,8 +828,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
             <select name="status" value={trade.status} onChange={handleChange} 
                     className="w-full border border-[rgba(255,255,255,0.1)] rounded-lg px-4 py-3.5 text-white 
                               focus:ring-2 focus:ring-[#6A5ACD]/50 focus:border-[#6A5ACD]/50 focus:outline-none
-                              transition-all duration-200 hover:border-[rgba(255,255,255,0.2)] disabled:opacity-50 disabled:cursor-not-allowed appearance-none cursor-pointer" 
-                    disabled={(trade.partialExits||[]).length > 0}>
+                              transition-all duration-200 hover:border-[rgba(255,255,255,0.2)] appearance-none cursor-pointer">
                 <option value="open">Open</option>
                 <option value="win">Win</option>
                 <option value="loss">Loss</option>
@@ -747,18 +836,40 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
             </select>
         </div>
         {isClosable && (
-             <InputField 
-               label="Exit Price" 
-               name="exitPrice" 
-               type="number" 
-               value={trade.exitPrice === undefined || isNaN(trade.exitPrice) ? '' : trade.exitPrice} 
-               onChange={handleChange} 
-               onBlur={handleBlur}
-               error={errors.exitPrice}
-               touched={touched.exitPrice}
-             />
+          <div>
+            <InputField 
+              label="Exit Price" 
+              name="exitPrice" 
+              type="number" 
+              value={trade.exitPrice === undefined || isNaN(trade.exitPrice) ? '' : trade.exitPrice} 
+              onChange={handleChange} 
+              onBlur={handleBlur}
+              error={errors.exitPrice}
+              touched={touched.exitPrice}
+            />
+            {hasPartialExits && hasRemainingHoldings && (
+              <p className="text-xs text-[#A0A0A0] mt-2">
+                This exit price will be applied to the remaining {remainingQty} {remainingQty === 1 ? 'unit' : 'units'} as a partial exit
+              </p>
+            )}
+          </div>
         )}
       </div>
+      
+      {trade.status !== 'open' && (
+        <div>
+          <label className="block text-sm font-semibold text-[#E0E0E0] mb-3">Close Date</label>
+          <input
+            type="date"
+            name="closeDate"
+            value={trade.closeDate || new Date().toISOString().split('T')[0]}
+            onChange={handleChange}
+            className="w-full border border-[rgba(255,255,255,0.1)] rounded-lg px-4 py-3.5 text-white bg-[rgba(0,0,0,0.2)]
+                      focus:ring-2 focus:ring-[#6A5ACD]/50 focus:border-[#6A5ACD]/50 focus:outline-none
+                      transition-all duration-200 hover:border-[rgba(255,255,255,0.2)]"
+          />
+        </div>
+      )}
 
       <div>
         <label className="block text-sm font-semibold text-[#E0E0E0] mb-3">Notes</label>

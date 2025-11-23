@@ -93,10 +93,58 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
     const openTradesCount = totalTrades - closedTrades.length;
     const closedTradesCount = closedTrades.length;
     const winningTrades = closedTrades.filter(t => getTradeStats(t).realizedPL > 0);
+    const losingTrades = closedTrades.filter(t => getTradeStats(t).realizedPL < 0);
     const winRate = closedTrades.length > 0 ? (winningTrades.length / closedTrades.length) * 100 : 0;
     
     const riskPercent = strategy.initialCapital > 0 ? (totalRisk / strategy.initialCapital) * 100 : 0;
     const gainOnCapital = strategy.initialCapital > 0 ? (totalPL / strategy.initialCapital) * 100 : 0;
+
+    // Calculate average holding period for winning and losing trades
+    const winningTradesWithCloseDate = winningTrades.filter(t => t.closeDate);
+    const losingTradesWithCloseDate = losingTrades.filter(t => t.closeDate);
+    
+    let avgHoldingPeriodWinning = 0;
+    if (winningTradesWithCloseDate.length > 0) {
+      const totalDaysWinning = winningTradesWithCloseDate.reduce((sum, trade) => {
+        const entryDate = new Date(trade.date).getTime();
+        const closeDate = new Date(trade.closeDate!).getTime();
+        const days = Math.floor((closeDate - entryDate) / (1000 * 60 * 60 * 24));
+        return sum + days;
+      }, 0);
+      avgHoldingPeriodWinning = totalDaysWinning / winningTradesWithCloseDate.length;
+    }
+    
+    let avgHoldingPeriodLosing = 0;
+    if (losingTradesWithCloseDate.length > 0) {
+      const totalDaysLosing = losingTradesWithCloseDate.reduce((sum, trade) => {
+        const entryDate = new Date(trade.date).getTime();
+        const closeDate = new Date(trade.closeDate!).getTime();
+        const days = Math.floor((closeDate - entryDate) / (1000 * 60 * 60 * 24));
+        return sum + days;
+      }, 0);
+      avgHoldingPeriodLosing = totalDaysLosing / losingTradesWithCloseDate.length;
+    }
+
+    // Calculate average portfolio impact for winning and losing trades
+    let avgPortfolioImpactWinning = 0;
+    if (winningTrades.length > 0 && strategy.initialCapital > 0) {
+      const totalImpactWinning = winningTrades.reduce((sum, trade) => {
+        const tradeStats = getTradeStats(trade);
+        const impact = (tradeStats.realizedPL / strategy.initialCapital) * 100;
+        return sum + impact;
+      }, 0);
+      avgPortfolioImpactWinning = totalImpactWinning / winningTrades.length;
+    }
+    
+    let avgPortfolioImpactLosing = 0;
+    if (losingTrades.length > 0 && strategy.initialCapital > 0) {
+      const totalImpactLosing = losingTrades.reduce((sum, trade) => {
+        const tradeStats = getTradeStats(trade);
+        const impact = (tradeStats.realizedPL / strategy.initialCapital) * 100;
+        return sum + impact;
+      }, 0);
+      avgPortfolioImpactLosing = totalImpactLosing / losingTrades.length;
+    }
 
     return { 
       totalPL, 
@@ -108,20 +156,112 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
       gainOnCapital, 
       totalRisk,
       openTradesCount,
-      closedTradesCount
+      closedTradesCount,
+      avgHoldingPeriodWinning,
+      avgHoldingPeriodLosing,
+      avgPortfolioImpactWinning,
+      avgPortfolioImpactLosing,
+      winningTradesCount: winningTrades.length,
+      losingTradesCount: losingTrades.length
     };
   }, [strategy]);
 
   // Define all stats with their keys
   const allStats = useMemo(() => {
+    // Format average holding period sublabel with tooltips
+    let holdingPeriodSublabel: string | React.ReactNode = '';
+    const hasWinningHoldingData = stats.winningTradesCount > 0 && stats.avgHoldingPeriodWinning > 0;
+    const hasLosingHoldingData = stats.losingTradesCount > 0 && stats.avgHoldingPeriodLosing > 0;
+    
+    if (hasWinningHoldingData || hasLosingHoldingData) {
+      const parts: React.ReactNode[] = [];
+      
+      if (hasWinningHoldingData) {
+        parts.push(
+          <span key="winning" className="relative group/w-tooltip inline-block">
+            <span className="cursor-help">W:</span>
+            <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/w-tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+              Average holding period for winning trades
+            </div>
+          </span>
+        );
+        parts.push(` ${stats.avgHoldingPeriodWinning.toFixed(1)} days`);
+      }
+      
+      if (hasWinningHoldingData && hasLosingHoldingData) {
+        parts.push(', ');
+      }
+      
+      if (hasLosingHoldingData) {
+        parts.push(
+          <span key="losing" className="relative group/l-tooltip inline-block">
+            <span className="cursor-help">L:</span>
+            <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/l-tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+              Average holding period for losing trades
+            </div>
+          </span>
+        );
+        parts.push(` ${stats.avgHoldingPeriodLosing.toFixed(1)} days`);
+      }
+      
+      holdingPeriodSublabel = (
+        <span className="text-sm text-[#A0A0A0]">
+          {parts}
+        </span>
+      );
+    }
+
+    // Format average portfolio impact sublabel with tooltips
+    let portfolioImpactSublabel: string | React.ReactNode = '';
+    const hasWinningImpactData = stats.winningTradesCount > 0;
+    const hasLosingImpactData = stats.losingTradesCount > 0;
+    
+    if (hasWinningImpactData || hasLosingImpactData) {
+      const parts: React.ReactNode[] = [];
+      
+      if (hasWinningImpactData) {
+        parts.push(
+          <span key="winning" className="relative group/w-tooltip inline-block">
+            <span className="cursor-help">W:</span>
+            <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/w-tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+              Average portfolio impact of winning trades
+            </div>
+          </span>
+        );
+        parts.push(` ${stats.avgPortfolioImpactWinning.toFixed(2)}%`);
+      }
+      
+      if (hasWinningImpactData && hasLosingImpactData) {
+        parts.push(', ');
+      }
+      
+      if (hasLosingImpactData) {
+        parts.push(
+          <span key="losing" className="relative group/l-tooltip inline-block">
+            <span className="cursor-help">L:</span>
+            <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/l-tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+              Average portfolio impact of losing trades
+            </div>
+          </span>
+        );
+        parts.push(` ${stats.avgPortfolioImpactLosing.toFixed(2)}%`);
+      }
+      
+      portfolioImpactSublabel = (
+        <span className="text-sm text-[#A0A0A0]">
+          {parts}
+        </span>
+      );
+    }
+
     return [
       { key: 'currentCapital' as StrategyStatKey, title: 'Current Capital', value: formatCurrency(stats.currentCapital, currency), icon: <MoneyIcon />, isPositive: undefined },
       { key: 'totalPL' as StrategyStatKey, title: 'Strategy P/L', value: formatCurrency(stats.totalPL, currency), icon: <BagOfMoneyIcon />, isPositive: stats.totalPL >= 0 },
-      { key: 'gainOnCapital' as StrategyStatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0 },
+      { key: 'gainOnCapital' as StrategyStatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0, sublabel: portfolioImpactSublabel || undefined },
       { key: 'amountInvested' as StrategyStatKey, title: 'Amount Invested', value: formatCurrency(stats.amountInvested, currency), icon: <ScaleIcon />, isPositive: undefined },
       { key: 'riskPercent' as StrategyStatKey, title: '% Risk', value: `${stats.riskPercent.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskPercent < 5, sublabel: formatCurrency(stats.totalRisk, currency) },
       { key: 'winRate' as StrategyStatKey, title: 'Win Rate', value: `${stats.winRate.toFixed(1)}%`, icon: <TrendingUpIcon />, isPositive: stats.winRate >= 50 },
-      { key: 'totalTrades' as StrategyStatKey, title: 'Total Trades', value: stats.totalTrades.toString(), icon: <CalculatorIcon />, isPositive: undefined },
+      { key: 'totalTrades' as StrategyStatKey, title: 'Total Trades', value: stats.totalTrades.toString(), icon: <CalculatorIcon />, isPositive: undefined, sublabel: holdingPeriodSublabel || undefined },
     ];
   }, [stats, currency]);
 

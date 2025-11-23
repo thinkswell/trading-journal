@@ -7,7 +7,7 @@ import { EditIcon } from './icons/EditIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { ExternalLinkIcon } from './icons/ExternalLinkIcon';
 import { openTradingView } from '../lib/tradingViewUtils';
-import { FiAlertTriangle } from 'react-icons/fi';
+import { FiAlertTriangle, FiInfo } from 'react-icons/fi';
 
 type SortOption = 'date' | 'asset' | 'percentInvested';
 
@@ -59,6 +59,14 @@ const TradeRow: React.FC<{
                       <span>
                         <strong className="text-yellow-300">Heads up!</strong> Please set a stop loss for this trade.
                       </span>
+                    </div>
+                  </div>
+                )}
+                {trade.status !== 'open' && !trade.closeDate && (
+                  <div className="relative group/info">
+                    <FiInfo className="w-4 h-4 text-[#6A5ACD]" />
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+                      <span>Please add end date for better statistics</span>
                     </div>
                   </div>
                 )}
@@ -132,6 +140,14 @@ const TradeCard: React.FC<{
                     <span>
                       <strong className="text-yellow-300">Heads up!</strong> Please set a stop loss for this trade.
                     </span>
+                </div>
+              </div>
+            )}
+            {trade.status !== 'open' && !trade.closeDate && (
+              <div className="relative group/info">
+                <FiInfo className="w-4 h-4 text-[#6A5ACD]" />
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+                  <span>Please add end date for better statistics</span>
                 </div>
               </div>
             )}

@@ -5,7 +5,7 @@ interface StatCardProps {
   value: string;
   isPositive?: boolean;
   icon?: React.ReactNode;
-  sublabel?: string;
+  sublabel?: string | React.ReactNode;
 }
 
 const StatCard: React.FC<StatCardProps> = ({ title, value, isPositive, icon, sublabel }) => {
@@ -23,7 +23,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, isPositive, icon, sub
       <div>
         <p className={`text-3xl md:text-4xl font-extrabold ${valueColor} leading-tight tracking-tight`}>{value}</p>
         {sublabel && (
-          <p className="text-sm text-[#A0A0A0] mt-1">{sublabel}</p>
+          <div className="text-sm text-[#A0A0A0] mt-1">{sublabel}</div>
         )}
       </div>
     </div>

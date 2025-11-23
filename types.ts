@@ -34,6 +34,7 @@ export interface Trade {
   trailingStops: TrailingStop[];
   partialExits: PartialExit[];
   statusManuallySet?: boolean;
+  closeDate?: string; // ISO string - date when position was closed
 }
 
 export interface Strategy {
