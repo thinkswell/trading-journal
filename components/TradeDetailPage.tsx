@@ -1,9 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Trade, Strategy } from '../types';
 import { getTradeStats, calculateTradeStatus } from '../lib/tradeCalculations';
 import { statusColorMap } from './TradeList';
 import RichTextEditor from './RichTextEditor';
 import { EditIcon } from './icons/EditIcon';
+import { MoveIcon } from './icons/MoveIcon';
+import { CopyIcon } from './icons/CopyIcon';
 import { ExternalLinkIcon } from './icons/ExternalLinkIcon';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
@@ -11,6 +13,8 @@ import { TrendingUpIcon } from './icons/TrendingUpIcon';
 import { TrendingDownIcon } from './icons/TrendingDownIcon';
 import { DocumentTextIcon } from './icons/DocumentTextIcon';
 import { openTradingView } from '../lib/tradingViewUtils';
+import MoveTradeModal from './MoveTradeModal';
+import CopyTradeModal from './CopyTradeModal';
 
 interface TradeDetailPageProps {
   trade: Trade;
@@ -18,6 +22,9 @@ interface TradeDetailPageProps {
   onSaveTrade: (trade: Trade) => void;
   onBack: () => void;
   onOpenTradeForm: (trade: Trade) => void;
+  onMoveTrade?: (trade: Trade, targetStrategyId: string) => void;
+  onCopyTrade?: (trade: Trade, targetStrategyId: string) => void;
+  strategies?: Strategy[];
   backButtonText: string;
 }
 
@@ -29,9 +36,23 @@ const DetailStatCard: React.FC<{ title: string; value: string; valueColor?: stri
     </div>
 );
 
-const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSaveTrade, onBack, onOpenTradeForm, backButtonText }) => {
+const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSaveTrade, onBack, onOpenTradeForm, onMoveTrade, onCopyTrade, strategies, backButtonText }) => {
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
   const stats = getTradeStats(trade);
   const { currency } = useSettings();
+
+  const handleMove = (targetStrategyId: string) => {
+    if (onMoveTrade) {
+      onMoveTrade(trade, targetStrategyId);
+    }
+  };
+
+  const handleCopy = (targetStrategyId: string) => {
+    if (onCopyTrade) {
+      onCopyTrade(trade, targetStrategyId);
+    }
+  };
 
   const gainLossPercent = stats.totalInvested > 0 ? (stats.realizedPL / stats.totalInvested) * 100 : 0;
   const effectOnCapital = strategy.initialCapital > 0 ? (stats.totalRiskValue / strategy.initialCapital) * 100 : 0;
@@ -129,6 +150,24 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                     >
                         <EditIcon />
                     </button>
+                    {onMoveTrade && strategies && (
+                      <button 
+                        onClick={() => setIsMoveModalOpen(true)}
+                        className="text-[#A0A0A0] hover:text-[#06b6d4] hover:bg-[#06b6d4]/10 p-2 rounded-lg transition-all duration-200"
+                        aria-label="Move Trade"
+                      >
+                        <MoveIcon />
+                      </button>
+                    )}
+                    {onCopyTrade && strategies && (
+                      <button 
+                        onClick={() => setIsCopyModalOpen(true)}
+                        className="text-[#A0A0A0] hover:text-[#8b5cf6] hover:bg-[#8b5cf6]/10 p-2 rounded-lg transition-all duration-200"
+                        aria-label="Copy Trade"
+                      >
+                        <CopyIcon />
+                      </button>
+                    )}
                     <span className={`px-3 md:px-4 py-1.5 md:py-2 text-xs md:text-sm font-bold rounded-full ${statusColorMap[trade.status]} transition-all duration-200 hover:scale-105`}>
                         {trade.status.toUpperCase()}
                     </span>
@@ -260,6 +299,26 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                  <RichTextEditor content={trade.notes || ''} onSave={handleNotesSave} />
             </div>
         </div>
+        {onMoveTrade && strategies && (
+          <MoveTradeModal
+            isOpen={isMoveModalOpen}
+            onClose={() => setIsMoveModalOpen(false)}
+            onMove={handleMove}
+            strategies={strategies}
+            currentStrategyId={trade.strategyId}
+            tradeAsset={trade.asset}
+          />
+        )}
+        {onCopyTrade && strategies && (
+          <CopyTradeModal
+            isOpen={isCopyModalOpen}
+            onClose={() => setIsCopyModalOpen(false)}
+            onCopy={handleCopy}
+            strategies={strategies}
+            currentStrategyId={trade.strategyId}
+            tradeAsset={trade.asset}
+          />
+        )}
     </div>
   );
 };

@@ -5,9 +5,13 @@ import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
 import { EditIcon } from './icons/EditIcon';
 import { TrashIcon } from './icons/TrashIcon';
+import { MoveIcon } from './icons/MoveIcon';
+import { CopyIcon } from './icons/CopyIcon';
 import { ExternalLinkIcon } from './icons/ExternalLinkIcon';
 import { openTradingView } from '../lib/tradingViewUtils';
 import { FiAlertTriangle, FiInfo } from 'react-icons/fi';
+import MoveTradeModal from './MoveTradeModal';
+import CopyTradeModal from './CopyTradeModal';
 
 type SortOption = 'date' | 'asset' | 'percentInvested';
 
@@ -17,6 +21,8 @@ interface TradeListProps {
   onEdit: (trade: Trade) => void;
   onDelete: (tradeId: string) => void;
   onViewDetails?: (trade: Trade) => void;
+  onMoveTrade?: (trade: Trade, targetStrategyId: string) => void;
+  onCopyTrade?: (trade: Trade, targetStrategyId: string) => void;
   strategyCapital?: number;
   strategies?: Strategy[];
   sortOption?: SortOption;
@@ -36,9 +42,10 @@ const TradeRow: React.FC<{
     onEdit: (trade: Trade) => void, 
     onDelete: (tradeId: string) => void,
     onViewDetails?: (trade: Trade) => void,
+    onOpenMoveModal?: (trade: Trade) => void;
+    onOpenCopyModal?: (trade: Trade) => void;
     capital?: number;
-}> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, capital }) => {
-    
+}> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, onOpenMoveModal, onOpenCopyModal, capital }) => {
     const { currency } = useSettings();
     const stats = getTradeStats(trade);
     const percentOfCapital = capital && capital > 0 ? (stats.totalInvested / capital) * 100 : 0;
@@ -98,6 +105,24 @@ const TradeRow: React.FC<{
                   >
                       <EditIcon />
                   </button>
+                  {onOpenMoveModal && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onOpenMoveModal(trade); }} 
+                      className="text-[#06b6d4] hover:text-[#22d3ee] hover:bg-[#06b6d4]/10 p-2 rounded-lg transition-all duration-200 hover:scale-110"
+                      aria-label="Move Trade"
+                    >
+                        <MoveIcon />
+                    </button>
+                  )}
+                  {onOpenCopyModal && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onOpenCopyModal(trade); }} 
+                      className="text-[#8b5cf6] hover:text-[#a78bfa] hover:bg-[#8b5cf6]/10 p-2 rounded-lg transition-all duration-200 hover:scale-110"
+                      aria-label="Copy Trade"
+                    >
+                        <CopyIcon />
+                    </button>
+                  )}
                   <button 
                     onClick={(e) => { e.stopPropagation(); onDelete(trade.id); }} 
                     className="text-[#DC3545] hover:text-[#e85d75] hover:bg-[#DC3545]/10 p-2 rounded-lg transition-all duration-200 hover:scale-110"
@@ -108,7 +133,7 @@ const TradeRow: React.FC<{
                 </div>
             </td>
         </tr>
-    )
+    );
 }
 
 const TradeCard: React.FC<{
@@ -117,8 +142,10 @@ const TradeCard: React.FC<{
   onEdit: (trade: Trade) => void;
   onDelete: (tradeId: string) => void;
   onViewDetails?: (trade: Trade) => void;
+  onOpenMoveModal?: (trade: Trade) => void;
+  onOpenCopyModal?: (trade: Trade) => void;
   capital?: number;
-}> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, capital }) => {
+}> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, onOpenMoveModal, onOpenCopyModal, capital }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const { currency } = useSettings();
   const stats = getTradeStats(trade);
@@ -178,6 +205,30 @@ const TradeCard: React.FC<{
           >
             <EditIcon />
           </button>
+          {onOpenMoveModal && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenMoveModal(trade);
+              }}
+              className="text-[#06b6d4] hover:text-[#22d3ee] hover:bg-[#06b6d4]/10 p-2 rounded-lg transition-all duration-200"
+              aria-label="Move Trade"
+            >
+              <MoveIcon />
+            </button>
+          )}
+          {onOpenCopyModal && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenCopyModal(trade);
+              }}
+              className="text-[#8b5cf6] hover:text-[#a78bfa] hover:bg-[#8b5cf6]/10 p-2 rounded-lg transition-all duration-200"
+              aria-label="Copy Trade"
+            >
+              <CopyIcon />
+            </button>
+          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -230,7 +281,12 @@ const TradeCard: React.FC<{
   );
 };
 
-const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDelete, onViewDetails, strategyCapital, strategies, sortOption, onSortChange }) => {
+const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDelete, onViewDetails, onMoveTrade, onCopyTrade, strategyCapital, strategies, sortOption, onSortChange }) => {
+  const [selectedTradeForMove, setSelectedTradeForMove] = useState<Trade | null>(null);
+  const [selectedTradeForCopy, setSelectedTradeForCopy] = useState<Trade | null>(null);
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+
   if (trades.length === 0) {
     return <div className="text-center py-10 text-[#A0A0A0]">No trades recorded yet.</div>;
   }
@@ -241,6 +297,32 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
   const handleSort = (option: SortOption) => {
     if (onSortChange) {
       onSortChange(option);
+    }
+  };
+
+  const handleOpenMoveModal = (trade: Trade) => {
+    setSelectedTradeForMove(trade);
+    setIsMoveModalOpen(true);
+  };
+
+  const handleOpenCopyModal = (trade: Trade) => {
+    setSelectedTradeForCopy(trade);
+    setIsCopyModalOpen(true);
+  };
+
+  const handleMove = (targetStrategyId: string) => {
+    if (selectedTradeForMove && onMoveTrade) {
+      onMoveTrade(selectedTradeForMove, targetStrategyId);
+      setIsMoveModalOpen(false);
+      setSelectedTradeForMove(null);
+    }
+  };
+
+  const handleCopy = (targetStrategyId: string) => {
+    if (selectedTradeForCopy && onCopyTrade) {
+      onCopyTrade(selectedTradeForCopy, targetStrategyId);
+      setIsCopyModalOpen(false);
+      setSelectedTradeForCopy(null);
     }
   };
 
@@ -270,6 +352,8 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
               onEdit={onEdit}
               onDelete={onDelete}
               onViewDetails={onViewDetails}
+              onOpenMoveModal={onMoveTrade ? handleOpenMoveModal : undefined}
+              onOpenCopyModal={onCopyTrade ? handleOpenCopyModal : undefined}
               capital={capitalForTrade}
             />
           );
@@ -328,6 +412,8 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onViewDetails={onViewDetails}
+                  onOpenMoveModal={onMoveTrade ? handleOpenMoveModal : undefined}
+                  onOpenCopyModal={onCopyTrade ? handleOpenCopyModal : undefined}
                   capital={capitalForTrade}
                 />
               );
@@ -335,6 +421,32 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
           </tbody>
         </table>
       </div>
+      {onMoveTrade && strategies && selectedTradeForMove && (
+        <MoveTradeModal
+          isOpen={isMoveModalOpen}
+          onClose={() => {
+            setIsMoveModalOpen(false);
+            setSelectedTradeForMove(null);
+          }}
+          onMove={handleMove}
+          strategies={strategies}
+          currentStrategyId={selectedTradeForMove.strategyId}
+          tradeAsset={selectedTradeForMove.asset}
+        />
+      )}
+      {onCopyTrade && strategies && selectedTradeForCopy && (
+        <CopyTradeModal
+          isOpen={isCopyModalOpen}
+          onClose={() => {
+            setIsCopyModalOpen(false);
+            setSelectedTradeForCopy(null);
+          }}
+          onCopy={handleCopy}
+          strategies={strategies}
+          currentStrategyId={selectedTradeForCopy.strategyId}
+          tradeAsset={selectedTradeForCopy.asset}
+        />
+      )}
     </>
   );
 };

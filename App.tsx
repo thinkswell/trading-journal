@@ -532,6 +532,45 @@ const AppContent: React.FC = () => {
     saveStrategies(newStrategies);
   }
 
+  const handleMoveTrade = (trade: Trade, targetStrategyId: string) => {
+    // Find the trade in the current strategy
+    const currentStrategy = strategies.find(s => s.id === trade.strategyId);
+    if (!currentStrategy) return;
+
+    // Remove trade from current strategy and add to target strategy
+    const newStrategies = strategies.map(strategy => {
+      if (strategy.id === trade.strategyId) {
+        // Remove from current strategy
+        return { ...strategy, trades: strategy.trades.filter(t => t.id !== trade.id) };
+      } else if (strategy.id === targetStrategyId) {
+        // Add to target strategy with updated strategyId
+        const updatedTrade = { ...trade, strategyId: targetStrategyId };
+        return { ...strategy, trades: [...strategy.trades, updatedTrade] };
+      }
+      return strategy;
+    });
+    saveStrategies(newStrategies);
+  };
+
+  const handleCopyTrade = (trade: Trade, targetStrategyId: string) => {
+    // Create a new trade with a new ID
+    const newTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const newTrade: Trade = {
+      ...trade,
+      id: newTradeId,
+      strategyId: targetStrategyId,
+    };
+
+    // Add the new trade to the target strategy
+    const newStrategies = strategies.map(strategy => {
+      if (strategy.id === targetStrategyId) {
+        return { ...strategy, trades: [...strategy.trades, newTrade] };
+      }
+      return strategy;
+    });
+    saveStrategies(newStrategies);
+  };
+
   const handleUpdateStrategy = (strategyId: string, name: string, initialCapital: number) => {
     const newStrategies = strategies.map(s => 
       s.id === strategyId ? { ...s, name, initialCapital } : s
@@ -591,6 +630,9 @@ const AppContent: React.FC = () => {
                         onSaveTrade={handleSaveTrade}
                         onBack={() => setActiveView(previousView)}
                         onOpenTradeForm={handleOpenTradeForm}
+                        onMoveTrade={handleMoveTrade}
+                        onCopyTrade={handleCopyTrade}
+                        strategies={strategies}
                         backButtonText={backButtonText}
                     />;
         }
@@ -603,6 +645,8 @@ const AppContent: React.FC = () => {
                     navigateTo={navigateTo}
                     onOpenTradeForm={handleOpenTradeForm}
                     onDeleteTrade={handleDeleteTrade}
+                    onMoveTrade={handleMoveTrade}
+                    onCopyTrade={handleCopyTrade}
                 />;
     }
 
@@ -615,10 +659,13 @@ const AppContent: React.FC = () => {
                     onDeleteStrategy={handleDeleteStrategy}
                     navigateTo={navigateTo}
                     onOpenTradeForm={handleOpenTradeForm}
+                    onMoveTrade={handleMoveTrade}
+                    onCopyTrade={handleCopyTrade}
+                    strategies={strategies}
                 />;
     }
 
-    return <Dashboard allTrades={allTrades} strategies={strategies} navigateTo={navigateTo} onOpenTradeForm={handleOpenTradeForm} onDeleteTrade={handleDeleteTrade} />;
+    return <Dashboard allTrades={allTrades} strategies={strategies} navigateTo={navigateTo} onOpenTradeForm={handleOpenTradeForm} onDeleteTrade={handleDeleteTrade} onMoveTrade={handleMoveTrade} onCopyTrade={handleCopyTrade} />;
   }
 
 

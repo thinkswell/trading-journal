@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ModalProps {
   isOpen: boolean;
@@ -30,7 +31,7 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, size = 'md' })
     '4xl': 'md:max-w-6xl',
   };
 
-  return (
+  const modalContent = (
     <div 
       className="fixed inset-0 bg-black/60 backdrop-blur-sm flex justify-center items-center z-50 transition-all duration-300 animate-fade-in"
       onClick={onClose}
@@ -47,6 +48,8 @@ const Modal: React.FC<ModalProps> = ({ isOpen, onClose, children, size = 'md' })
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };
 
 export default Modal;

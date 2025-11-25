@@ -20,6 +20,8 @@ interface DashboardProps {
   navigateTo: (view: string) => void;
   onOpenTradeForm: (trade: Trade | null) => void;
   onDeleteTrade: (tradeId: string, strategyId: string) => void;
+  onMoveTrade?: (trade: Trade, targetStrategyId: string) => void;
+  onCopyTrade?: (trade: Trade, targetStrategyId: string) => void;
 }
 
 type StatKey = 'totalCapital' | 'totalPL' | 'gainOnCapital' | 'amountInvested' | 'riskOnCapital' | 'winRate' | 'profitFactor' | 'totalTrades';
@@ -27,7 +29,7 @@ type SortOption = 'date' | 'asset' | 'percentInvested';
 
 const DEFAULT_PINNED_STATS: StatKey[] = ['totalCapital', 'gainOnCapital'];
 
-const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo, onOpenTradeForm, onDeleteTrade }) => {
+const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo, onOpenTradeForm, onDeleteTrade, onMoveTrade, onCopyTrade }) => {
   const [assetFilter, setAssetFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<TradeStatus | 'all'>('all');
   const [strategyFilter, setStrategyFilter] = useState<string>('all');
@@ -283,6 +285,8 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
             onEdit={onOpenTradeForm} 
             onDelete={handleDeleteFromDashboard}
             onViewDetails={(trade) => navigateTo(`trade/${trade.id}`)}
+            onMoveTrade={onMoveTrade}
+            onCopyTrade={onCopyTrade}
             strategies={strategies}
             sortOption={sortOption}
             onSortChange={setSortOption}

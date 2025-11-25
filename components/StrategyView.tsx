@@ -25,6 +25,9 @@ interface StrategyViewProps {
   onDeleteStrategy: (strategyId: string) => void;
   navigateTo: (view: string) => void;
   onOpenTradeForm: (trade: Trade | null) => void;
+  onMoveTrade?: (trade: Trade, targetStrategyId: string) => void;
+  onCopyTrade?: (trade: Trade, targetStrategyId: string) => void;
+  strategies?: Strategy[];
 }
 
 type StrategyStatKey = 'currentCapital' | 'totalPL' | 'gainOnCapital' | 'amountInvested' | 'riskPercent' | 'winRate' | 'totalTrades';
@@ -33,7 +36,7 @@ type StatusFilter = 'all' | 'open' | 'closed' | 'win' | 'loss' | 'breakeven';
 
 const DEFAULT_PINNED_STATS: StrategyStatKey[] = ['currentCapital', 'gainOnCapital'];
 
-const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, onUpdateStrategy, onDeleteStrategy, navigateTo, onOpenTradeForm }) => {
+const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, onUpdateStrategy, onDeleteStrategy, navigateTo, onOpenTradeForm, onMoveTrade, onCopyTrade, strategies }) => {
   const [isEditStrategyModalOpen, setIsEditStrategyModalOpen] = useState(false);
   const [isConfirmDeleteOpen, setIsConfirmDeleteOpen] = useState(false);
   const [editedName, setEditedName] = useState(strategy.name);
@@ -430,6 +433,9 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
           onEdit={handleEditTrade} 
           onDelete={(tradeId) => onDeleteTrade(tradeId, strategy.id)}
           onViewDetails={(trade) => navigateTo(`trade/${trade.id}`)}
+          onMoveTrade={onMoveTrade}
+          onCopyTrade={onCopyTrade}
+          strategies={strategies}
           strategyCapital={strategy.initialCapital}
           sortOption={sortOption}
           onSortChange={setSortOption}
