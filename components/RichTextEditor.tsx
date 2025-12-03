@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { FiBold, FiItalic, FiUnderline, FiLink, FiImage } from 'react-icons/fi';
 import Modal from './Modal';
 
@@ -7,6 +7,18 @@ interface RichTextEditorProps {
     onSave: (newContent: string) => void;
     onContentChange?: (newContent: string) => void;
     hideSaveButton?: boolean;
+}
+
+type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+interface ResizeState {
+    image: HTMLImageElement | null;
+    handle: ResizeHandle | null;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+    aspectRatio: number;
 }
 
 const EditorButton: React.FC<{ onMouseDown: (e: React.MouseEvent) => void, children: React.ReactNode, title: string }> = ({ onMouseDown, children, title }) => (
@@ -30,6 +42,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave, onCont
     const isUserTypingRef = useRef(false);
     const lastContentRef = useRef<string>('');
     const isInitialMountRef = useRef(true);
+    const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
+    const [handlePosition, setHandlePosition] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+    const resizeStateRef = useRef<ResizeState | null>(null);
+    const resizeHandlesRef = useRef<HTMLDivElement>(null);
 
     const executeCommand = (command: string, value?: string) => {
         if (savedRange.current) {
@@ -79,7 +95,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave, onCont
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64String = reader.result as string;
-            executeCommand('insertHTML', `<img src="${base64String}" style="max-width: 100%; height: auto; border-radius: 8px;" />`);
+            executeCommand('insertHTML', `<img src="${base64String}" style="max-width: 100%; height: auto; border-radius: 8px; cursor: pointer;" />`);
         };
         reader.readAsDataURL(file);
     };
@@ -119,6 +135,56 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave, onCont
         document.execCommand('insertHTML', false, text);
     };
 
+    // Setup image click handlers using event delegation
+    useEffect(() => {
+        const editor = editorRef.current;
+        if (!editor) return;
+
+        const handleImageClick = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'IMG') {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedImage(target as HTMLImageElement);
+            }
+        };
+
+        // Use event delegation on the editor
+        editor.addEventListener('click', handleImageClick);
+        
+        // Also set cursor style on all images (for both new and existing images)
+        const updateImageStyles = () => {
+            const images = editor.querySelectorAll('img');
+            images.forEach((img) => {
+                const imgElement = img as HTMLImageElement;
+                if (!imgElement.style.cursor) {
+                    imgElement.style.cursor = 'pointer';
+                }
+                // Ensure images have display block or inline-block for proper positioning
+                if (!imgElement.style.display || imgElement.style.display === '') {
+                    imgElement.style.display = 'block';
+                }
+            });
+        };
+
+        updateImageStyles();
+
+        // Use MutationObserver to handle dynamically added images
+        const observer = new MutationObserver(() => {
+            updateImageStyles();
+        });
+
+        observer.observe(editor, {
+            childList: true,
+            subtree: true
+        });
+
+        return () => {
+            editor.removeEventListener('click', handleImageClick);
+            observer.disconnect();
+        };
+    }, [content]);
+
     // Update editor content when content prop changes (for prefilling notes)
     // Only update if user is NOT currently typing to avoid cursor jumping
     useEffect(() => {
@@ -150,6 +216,188 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave, onCont
             }
         }
     }, [content]);
+
+    // Handle clicks outside to deselect image
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            const target = e.target as HTMLElement;
+            
+            // Don't deselect if clicking on resize handles
+            if (target.closest('.resize-handle') || target.closest('.resize-handles-container')) {
+                return;
+            }
+            
+            // Deselect if clicking outside editor
+            if (editorRef.current && !editorRef.current.contains(target)) {
+                setSelectedImage(null);
+                return;
+            }
+            
+            // Deselect if clicking on text or other non-image content
+            if (target.tagName !== 'IMG' && !(target instanceof HTMLImageElement)) {
+                // Check if we're clicking on the editor content (not on toolbar)
+                if (editorRef.current && editorRef.current.contains(target)) {
+                    // Only deselect if not clicking on a resize handle
+                    if (!target.closest('.resize-handle')) {
+                        setSelectedImage(null);
+                    }
+                }
+            }
+        };
+
+        // Use mousedown to catch clicks before they bubble
+        document.addEventListener('mousedown', handleClickOutside, true);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside, true);
+        };
+    }, []);
+
+    // Get image position and dimensions for resize handles
+    const getImageRect = useCallback((img: HTMLImageElement) => {
+        const editorRect = editorRef.current?.getBoundingClientRect();
+        const imgRect = img.getBoundingClientRect();
+        if (!editorRect) return null;
+        
+        return {
+            left: imgRect.left - editorRect.left,
+            top: imgRect.top - editorRect.top,
+            width: imgRect.width,
+            height: imgRect.height
+        };
+    }, []);
+
+    // Update handle positions when image is selected or scrolls
+    useEffect(() => {
+        if (!selectedImage || !editorRef.current) {
+            setHandlePosition(null);
+            return;
+        }
+
+        const updatePosition = () => {
+            const rect = getImageRect(selectedImage);
+            if (rect) {
+                setHandlePosition(rect);
+            }
+        };
+
+        updatePosition();
+
+        // Update on scroll
+        const handleScroll = () => updatePosition();
+        const editor = editorRef.current;
+        editor.addEventListener('scroll', handleScroll);
+        window.addEventListener('scroll', handleScroll, true);
+        window.addEventListener('resize', handleScroll);
+
+        // Also update when image loads (in case it's still loading)
+        if (selectedImage.complete) {
+            updatePosition();
+        } else {
+            selectedImage.addEventListener('load', updatePosition);
+        }
+
+        return () => {
+            editor.removeEventListener('scroll', handleScroll);
+            window.removeEventListener('scroll', handleScroll, true);
+            window.removeEventListener('resize', handleScroll);
+            selectedImage.removeEventListener('load', updatePosition);
+        };
+    }, [selectedImage, getImageRect]);
+
+    // Start resize
+    const handleResizeStart = useCallback((e: React.MouseEvent, handle: ResizeHandle) => {
+        if (!selectedImage) return;
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const rect = selectedImage.getBoundingClientRect();
+        const startWidth = rect.width;
+        const startHeight = rect.height;
+        const aspectRatio = startWidth / startHeight;
+        
+        resizeStateRef.current = {
+            image: selectedImage,
+            handle,
+            startX: e.clientX,
+            startY: e.clientY,
+            startWidth,
+            startHeight,
+            aspectRatio
+        };
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            if (!resizeStateRef.current || !selectedImage) return;
+            
+            const { handle, startX, startY, startWidth, startHeight, aspectRatio } = resizeStateRef.current;
+            const deltaX = moveEvent.clientX - startX;
+            const deltaY = moveEvent.clientY - startY;
+            const maintainAspect = !moveEvent.shiftKey;
+            
+            let newWidth = startWidth;
+            let newHeight = startHeight;
+            
+            // Calculate new dimensions based on handle
+            switch (handle) {
+                case 'nw':
+                    newWidth = startWidth - deltaX;
+                    newHeight = maintainAspect ? newWidth / aspectRatio : startHeight - deltaY;
+                    break;
+                case 'ne':
+                    newWidth = startWidth + deltaX;
+                    newHeight = maintainAspect ? newWidth / aspectRatio : startHeight - deltaY;
+                    break;
+                case 'se':
+                    newWidth = startWidth + deltaX;
+                    newHeight = maintainAspect ? newWidth / aspectRatio : startHeight + deltaY;
+                    break;
+                case 'sw':
+                    newWidth = startWidth - deltaX;
+                    newHeight = maintainAspect ? newWidth / aspectRatio : startHeight + deltaY;
+                    break;
+            }
+            
+            // Enforce minimum size
+            const minSize = 50;
+            if (newWidth < minSize) {
+                newWidth = minSize;
+                if (maintainAspect) {
+                    newHeight = newWidth / aspectRatio;
+                }
+            }
+            if (newHeight < minSize) {
+                newHeight = minSize;
+                if (maintainAspect) {
+                    newWidth = newHeight * aspectRatio;
+                }
+            }
+            
+            // Update image dimensions
+            selectedImage.style.width = `${newWidth}px`;
+            selectedImage.style.height = `${newHeight}px`;
+            selectedImage.style.maxWidth = 'none';
+            
+            // Update handle position
+            const rect = getImageRect(selectedImage);
+            if (rect) {
+                setHandlePosition(rect);
+            }
+            
+            // Trigger content change
+            if (editorRef.current && onContentChange) {
+                onContentChange(editorRef.current.innerHTML);
+            }
+        };
+
+        const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            resizeStateRef.current = null;
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    }, [selectedImage, onContentChange, getImageRect]);
 
     return (
         <>
@@ -189,25 +437,87 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave, onCont
                         </button>
                     )}
                 </div>
-                <div
-                    ref={editorRef}
-                    contentEditable={true}
-                    suppressContentEditableWarning={true}
-                    onPaste={handlePaste}
-                    onInput={(e) => {
-                        if (editorRef.current) {
-                            isUserTypingRef.current = true;
-                            if (onContentChange) {
-                                onContentChange(editorRef.current.innerHTML);
+                <div className="relative">
+                    <div
+                        ref={editorRef}
+                        contentEditable={true}
+                        suppressContentEditableWarning={true}
+                        onPaste={handlePaste}
+                        onInput={(e) => {
+                            if (editorRef.current) {
+                                isUserTypingRef.current = true;
+                                if (onContentChange) {
+                                    onContentChange(editorRef.current.innerHTML);
+                                }
+                                // Reset flag after a short delay
+                                setTimeout(() => {
+                                    isUserTypingRef.current = false;
+                                }, 200);
                             }
-                            // Reset flag after a short delay
-                            setTimeout(() => {
-                                isUserTypingRef.current = false;
-                            }, 200);
-                        }
-                    }}
-                    className="prose prose-invert max-w-none p-5 min-h-[200px] focus:outline-none focus:ring-2 focus:ring-[#6A5ACD]/50 rounded-b-xl text-[#E0E0E0] bg-[rgba(255,255,255,0.02)]"
-                />
+                        }}
+                        className="prose prose-invert max-w-none p-5 min-h-[200px] focus:outline-none focus:ring-2 focus:ring-[#6A5ACD]/50 rounded-b-xl text-[#E0E0E0] bg-[rgba(255,255,255,0.02)]"
+                    />
+                    {selectedImage && handlePosition && (() => {
+                        const rect = handlePosition;
+                        const handleSize = 12;
+                        const handleOffset = handleSize / 2;
+                        
+                        return (
+                            <div
+                                ref={resizeHandlesRef}
+                                className="resize-handles-container absolute pointer-events-none"
+                                style={{
+                                    left: `${rect.left}px`,
+                                    top: `${rect.top}px`,
+                                    width: `${rect.width}px`,
+                                    height: `${rect.height}px`
+                                }}
+                            >
+                                {/* Corner handles */}
+                                <div
+                                    className="resize-handle absolute bg-[#6A5ACD] border-2 border-white rounded-full cursor-nwse-resize pointer-events-auto hover:bg-[#8b5cf6] transition-colors"
+                                    style={{
+                                        left: `-${handleOffset}px`,
+                                        top: `-${handleOffset}px`,
+                                        width: `${handleSize}px`,
+                                        height: `${handleSize}px`
+                                    }}
+                                    onMouseDown={(e) => handleResizeStart(e, 'nw')}
+                                />
+                                <div
+                                    className="resize-handle absolute bg-[#6A5ACD] border-2 border-white rounded-full cursor-nesw-resize pointer-events-auto hover:bg-[#8b5cf6] transition-colors"
+                                    style={{
+                                        right: `-${handleOffset}px`,
+                                        top: `-${handleOffset}px`,
+                                        width: `${handleSize}px`,
+                                        height: `${handleSize}px`
+                                    }}
+                                    onMouseDown={(e) => handleResizeStart(e, 'ne')}
+                                />
+                                <div
+                                    className="resize-handle absolute bg-[#6A5ACD] border-2 border-white rounded-full cursor-nwse-resize pointer-events-auto hover:bg-[#8b5cf6] transition-colors"
+                                    style={{
+                                        right: `-${handleOffset}px`,
+                                        bottom: `-${handleOffset}px`,
+                                        width: `${handleSize}px`,
+                                        height: `${handleSize}px`
+                                    }}
+                                    onMouseDown={(e) => handleResizeStart(e, 'se')}
+                                />
+                                <div
+                                    className="resize-handle absolute bg-[#6A5ACD] border-2 border-white rounded-full cursor-nesw-resize pointer-events-auto hover:bg-[#8b5cf6] transition-colors"
+                                    style={{
+                                        left: `-${handleOffset}px`,
+                                        bottom: `-${handleOffset}px`,
+                                        width: `${handleSize}px`,
+                                        height: `${handleSize}px`
+                                    }}
+                                    onMouseDown={(e) => handleResizeStart(e, 'sw')}
+                                />
+                            </div>
+                        );
+                    })()}
+                </div>
             </div>
             <Modal isOpen={isUrlModalOpen} onClose={() => setIsUrlModalOpen(false)}>
                 <div className="p-2">
