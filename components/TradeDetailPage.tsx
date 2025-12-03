@@ -56,6 +56,7 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
 
   const gainLossPercent = stats.totalInvested > 0 ? (stats.realizedPL / stats.totalInvested) * 100 : 0;
   const effectOnCapital = strategy.initialCapital > 0 ? (stats.totalRiskValue / strategy.initialCapital) * 100 : 0;
+  const initialRiskOnCapital = strategy.initialCapital > 0 ? (stats.initialTotalRisk / strategy.initialCapital) * 100 : 0;
   const gainOnCapital = strategy.initialCapital > 0 ? (stats.realizedPL / strategy.initialCapital) * 100 : 0;
 
   const plColor = stats.realizedPL > 0 ? 'text-[#28A745]' : stats.realizedPL < 0 ? 'text-[#DC3545]' : 'text-gray-300';
@@ -210,7 +211,7 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                     title="% Risk on Capital" 
                     value={!stats.isClosed ? `${effectOnCapital.toFixed(2)}%` : '0.00%'}
                     valueColor={effectOnCapital > 5 ? 'text-[#DC3545]' : effectOnCapital > 2 ? 'text-yellow-400' : 'text-[#28A745]'}
-                    helpText="risk vs strategy capital"
+                    helpText={!stats.isClosed ? `risk vs strategy capital (initial: ${initialRiskOnCapital.toFixed(2)}%)` : 'risk vs strategy capital'}
                 />
                 <DetailStatCard 
                     title="Total Investment" 

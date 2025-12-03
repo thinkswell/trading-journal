@@ -36,6 +36,20 @@ export const statusColorMap: Record<TradeStatus, string> = {
   breakeven: 'bg-[#2C2C2C] text-[#E0E0E0] border border-[rgba(255,255,255,0.1)]',
 };
 
+const statusInitialMap: Record<TradeStatus, string> = {
+  open: 'O',
+  win: 'W',
+  loss: 'L',
+  breakeven: 'B',
+};
+
+const statusFullTextMap: Record<TradeStatus, string> = {
+  open: 'OPEN',
+  win: 'WIN',
+  loss: 'LOSS',
+  breakeven: 'BREAKEVEN',
+};
+
 const TradeRow: React.FC<{
     trade: Trade, 
     strategyName?: string, 
@@ -92,9 +106,35 @@ const TradeRow: React.FC<{
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{stats.isClosed ? (stats.avgExitPrice > 0 ? formatCurrency(stats.avgExitPrice, currency) : 'N/A') : 'N/A'}</td>
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{percentOfCapital > 0 ? `${percentOfCapital.toFixed(2)}%` : 'N/A'}</td>
             <td className="p-4">
-                <span className={`px-3 py-1.5 text-xs font-bold rounded-full ${statusColorMap[trade.status]} transition-all duration-200 group-hover:scale-105`}>
-                    {trade.status.toUpperCase()}
-                </span>
+                {(() => {
+                    const riskAmount = stats.isClosed ? stats.initialTotalRisk : stats.totalRiskValue;
+                    const rewardAmount = stats.isClosed ? stats.realizedPL : (stats.currentValue - stats.totalInvested);
+                    const rrRatio = riskAmount > 0 ? (rewardAmount / riskAmount) : 0;
+                    const riskPercent = capital && capital > 0 ? (riskAmount / capital) * 100 : 0;
+                    const rewardPercent = capital && capital > 0 ? (rewardAmount / capital) * 100 : 0;
+                    
+                    return (
+                        <div className="flex items-center gap-1.5 text-xs">
+                            <span className={`font-semibold ${rrRatio > 0 ? 'text-[#28A745]' : rrRatio < 0 ? 'text-[#DC3545]' : 'text-[#E0E0E0]'}`}>
+                                {rrRatio !== 0 ? `${rrRatio > 0 ? '+' : ''}${rrRatio.toFixed(2)}R` : '0R'}
+                            </span>
+                            <span className="text-[#A0A0A0] mx-1">|</span>
+                            <span className="text-[#A0A0A0] text-[10px]">
+                                ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
+                            </span>
+                        </div>
+                    );
+                })()}
+            </td>
+            <td className="p-2">
+                <div className="relative group/status inline-block">
+                    <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColorMap[trade.status]} transition-all duration-200 inline-flex items-center justify-center min-w-[24px]`}>
+                        {statusInitialMap[trade.status]}
+                    </span>
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/status:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+                        {statusFullTextMap[trade.status]}
+                    </div>
+                </div>
             </td>
             <td className="p-4 text-right">
                 <div className="flex items-center justify-end gap-1">
@@ -185,9 +225,14 @@ const TradeCard: React.FC<{
             >
               <ExternalLinkIcon className="w-4 h-4" />
             </button>
-            <span className={`px-3 py-1 text-xs font-bold rounded-full ${statusColorMap[trade.status]}`}>
-              {trade.status.toUpperCase()}
-            </span>
+            <div className="relative group/status inline-block">
+              <span className={`px-2 py-1 text-xs font-bold rounded-full ${statusColorMap[trade.status]} inline-flex items-center justify-center min-w-[24px]`}>
+                {statusInitialMap[trade.status]}
+              </span>
+              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/status:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+                {statusFullTextMap[trade.status]}
+              </div>
+            </div>
           </div>
           <div className="text-sm text-[#A0A0A0]">
             {new Date(trade.date).toLocaleDateString()}
@@ -262,6 +307,28 @@ const TradeCard: React.FC<{
             <div className="flex flex-col">
               <span className="text-[#A0A0A0] mb-1">% of Capital:</span>
               <span className="text-white font-semibold">{percentOfCapital > 0 ? `${percentOfCapital.toFixed(2)}%` : 'N/A'}</span>
+            </div>
+            <div className="flex flex-col col-span-2">
+              <span className="text-[#A0A0A0] mb-1">Risk/Reward:</span>
+              {(() => {
+                const riskAmount = stats.isClosed ? stats.initialTotalRisk : stats.totalRiskValue;
+                const rewardAmount = stats.isClosed ? stats.realizedPL : (stats.currentValue - stats.totalInvested);
+                const rrRatio = riskAmount > 0 ? (rewardAmount / riskAmount) : 0;
+                const riskPercent = capital && capital > 0 ? (riskAmount / capital) * 100 : 0;
+                const rewardPercent = capital && capital > 0 ? (rewardAmount / capital) * 100 : 0;
+                
+                return (
+                  <div className="flex items-center gap-1.5 text-xs flex-wrap">
+                    <span className={`font-semibold ${rrRatio > 0 ? 'text-[#28A745]' : rrRatio < 0 ? 'text-[#DC3545]' : 'text-[#E0E0E0]'}`}>
+                      {rrRatio !== 0 ? `${rrRatio > 0 ? '+' : ''}${rrRatio.toFixed(2)}R` : '0R'}
+                    </span>
+                    <span className="text-[#A0A0A0] mx-1">|</span>
+                    <span className="text-[#A0A0A0] text-[10px]">
+                      ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
           {onViewDetails && (
@@ -390,7 +457,8 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
                 % of Capital
                 <SortIndicator option="percentInvested" />
               </th>
-              <th className="p-4 font-bold">Status</th>
+              <th className="p-4 font-bold">Risk/Reward</th>
+              <th className="p-2 font-bold">Status</th>
               <th className="p-4 text-right font-bold">Actions</th>
             </tr>
           </thead>
