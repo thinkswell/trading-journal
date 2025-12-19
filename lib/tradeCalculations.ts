@@ -14,6 +14,7 @@ export interface TradeStats {
   totalRiskValue: number; // For open positions
   initialTotalRisk: number;
   rMultiple: number;
+  realizedRMultiple: number; // For open trades with partial exits
 }
 
 /**
@@ -114,7 +115,12 @@ export const getTradeStats = (trade: Trade): TradeStats => {
   // Initial total risk always uses initial SL (historical risk at trade entry)
   const initialTotalRisk = totalBoughtQty > 0 ? totalBoughtQty * (avgEntryPrice - trade.initialSl) : 0;
   const rMultiple = isClosed && initialTotalRisk > 0 ? realizedPL / initialTotalRisk : 0;
-
+  
+  // For open trades with partial exits, calculate realized R-multiple based on what's been sold
+  const hasPartialExits = (trade.partialExits || []).length > 0;
+  const realizedRMultiple = !isClosed && hasPartialExits && initialTotalRisk > 0 
+    ? realizedPL / initialTotalRisk 
+    : 0;
 
   return {
     totalBoughtQty,
@@ -130,5 +136,6 @@ export const getTradeStats = (trade: Trade): TradeStats => {
     totalRiskValue,
     initialTotalRisk,
     rMultiple,
+    realizedRMultiple,
   };
 };

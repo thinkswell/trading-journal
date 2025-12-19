@@ -107,21 +107,47 @@ const TradeRow: React.FC<{
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{percentOfCapital > 0 ? `${percentOfCapital.toFixed(2)}%` : 'N/A'}</td>
             <td className="p-4">
                 {(() => {
-                    const riskAmount = stats.isClosed ? stats.initialTotalRisk : stats.totalRiskValue;
-                    const rewardAmount = stats.isClosed ? stats.realizedPL : (stats.currentValue - stats.totalInvested);
-                    const rrRatio = riskAmount > 0 ? (rewardAmount / riskAmount) : 0;
+                    // For closed trades, use final R-multiple
+                    // For open trades with partial exits, use realized R-multiple
+                    // For open trades without partial exits, show N/A
+                    const hasPartialExits = (trade.partialExits || []).length > 0;
+                    let rrRatio = 0;
+                    let riskAmount = 0;
+                    let rewardAmount = 0;
+                    
+                    if (stats.isClosed) {
+                        // Closed trade: use final R-multiple
+                        rrRatio = stats.rMultiple;
+                        riskAmount = stats.initialTotalRisk;
+                        rewardAmount = stats.realizedPL;
+                    } else if (hasPartialExits && stats.initialTotalRisk > 0) {
+                        // Open trade with partial exits: use realized R-multiple
+                        rrRatio = stats.realizedRMultiple;
+                        riskAmount = stats.initialTotalRisk;
+                        rewardAmount = stats.realizedPL;
+                    } else {
+                        // Open trade without partial exits: show N/A
+                        rrRatio = 0;
+                        riskAmount = stats.totalRiskValue;
+                        rewardAmount = 0;
+                    }
+                    
                     const riskPercent = capital && capital > 0 ? (riskAmount / capital) * 100 : 0;
                     const rewardPercent = capital && capital > 0 ? (rewardAmount / capital) * 100 : 0;
                     
                     return (
                         <div className="flex items-center gap-1.5 text-xs">
                             <span className={`font-semibold ${rrRatio > 0 ? 'text-[#28A745]' : rrRatio < 0 ? 'text-[#DC3545]' : 'text-[#E0E0E0]'}`}>
-                                {rrRatio !== 0 ? `${rrRatio > 0 ? '+' : ''}${rrRatio.toFixed(2)}R` : '0R'}
+                                {!stats.isClosed && !hasPartialExits ? 'N/A' : (rrRatio !== 0 ? `${rrRatio > 0 ? '+' : ''}${rrRatio.toFixed(2)}R` : '0R')}
                             </span>
-                            <span className="text-[#A0A0A0] mx-1">|</span>
-                            <span className="text-[#A0A0A0] text-[10px]">
-                                ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
-                            </span>
+                            {(!stats.isClosed && !hasPartialExits) ? null : (
+                                <>
+                                    <span className="text-[#A0A0A0] mx-1">|</span>
+                                    <span className="text-[#A0A0A0] text-[10px]">
+                                        ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
+                                    </span>
+                                </>
+                            )}
                         </div>
                     );
                 })()}
@@ -311,21 +337,47 @@ const TradeCard: React.FC<{
             <div className="flex flex-col col-span-2">
               <span className="text-[#A0A0A0] mb-1">Risk/Reward:</span>
               {(() => {
-                const riskAmount = stats.isClosed ? stats.initialTotalRisk : stats.totalRiskValue;
-                const rewardAmount = stats.isClosed ? stats.realizedPL : (stats.currentValue - stats.totalInvested);
-                const rrRatio = riskAmount > 0 ? (rewardAmount / riskAmount) : 0;
+                // For closed trades, use final R-multiple
+                // For open trades with partial exits, use realized R-multiple
+                // For open trades without partial exits, show N/A
+                const hasPartialExits = (trade.partialExits || []).length > 0;
+                let rrRatio = 0;
+                let riskAmount = 0;
+                let rewardAmount = 0;
+                
+                if (stats.isClosed) {
+                  // Closed trade: use final R-multiple
+                  rrRatio = stats.rMultiple;
+                  riskAmount = stats.initialTotalRisk;
+                  rewardAmount = stats.realizedPL;
+                } else if (hasPartialExits && stats.initialTotalRisk > 0) {
+                  // Open trade with partial exits: use realized R-multiple
+                  rrRatio = stats.realizedRMultiple;
+                  riskAmount = stats.initialTotalRisk;
+                  rewardAmount = stats.realizedPL;
+                } else {
+                  // Open trade without partial exits: show N/A
+                  rrRatio = 0;
+                  riskAmount = stats.totalRiskValue;
+                  rewardAmount = 0;
+                }
+                
                 const riskPercent = capital && capital > 0 ? (riskAmount / capital) * 100 : 0;
                 const rewardPercent = capital && capital > 0 ? (rewardAmount / capital) * 100 : 0;
                 
                 return (
                   <div className="flex items-center gap-1.5 text-xs flex-wrap">
                     <span className={`font-semibold ${rrRatio > 0 ? 'text-[#28A745]' : rrRatio < 0 ? 'text-[#DC3545]' : 'text-[#E0E0E0]'}`}>
-                      {rrRatio !== 0 ? `${rrRatio > 0 ? '+' : ''}${rrRatio.toFixed(2)}R` : '0R'}
+                      {!stats.isClosed && !hasPartialExits ? 'N/A' : (rrRatio !== 0 ? `${rrRatio > 0 ? '+' : ''}${rrRatio.toFixed(2)}R` : '0R')}
                     </span>
-                    <span className="text-[#A0A0A0] mx-1">|</span>
-                    <span className="text-[#A0A0A0] text-[10px]">
-                      ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
-                    </span>
+                    {(!stats.isClosed && !hasPartialExits) ? null : (
+                      <>
+                        <span className="text-[#A0A0A0] mx-1">|</span>
+                        <span className="text-[#A0A0A0] text-[10px]">
+                          ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
+                        </span>
+                      </>
+                    )}
                   </div>
                 );
               })()}

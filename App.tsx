@@ -17,7 +17,6 @@ import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import TradeForm from './components/TradeForm';
 import { SettingsProvider } from './contexts/SettingsContext';
-import { hasNewData, mergeStrategies } from './lib/firebaseSyncUtils';
 
 // Helper function to remove undefined values from objects/arrays for Firestore compatibility
 const removeUndefinedValues = (obj: any): any => {
@@ -224,47 +223,6 @@ const AppContent: React.FC = () => {
     window.history.pushState({ view }, '', path);
   };
 
-  // Sync function to fetch latest data from Firebase and merge intelligently
-  const syncFromFirebase = async (user: User | null, setLoadingState: boolean = false) => {
-    if (!user) {
-      return;
-    }
-
-    try {
-      if (setLoadingState) {
-        setLoading(true);
-      }
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const data = userDoc.data();
-        const remoteStrategies = data.strategies as Strategy[] | undefined;
-        
-        if (remoteStrategies && Array.isArray(remoteStrategies)) {
-          // Check if remote has new data
-          if (hasNewData(strategies, remoteStrategies)) {
-            // Merge remote data with local data (preserves local edits)
-            const mergedStrategies = mergeStrategies(strategies, remoteStrategies);
-            setStrategies(mergedStrategies);
-            console.log('Synced new data from Firebase');
-          } else {
-            console.log('No new data from Firebase, keeping local data');
-          }
-        }
-        
-        // Update profile info if present (these are less likely to conflict)
-        if(data.firstName) setFirstName(data.firstName);
-        if(data.lastName) setLastName(data.lastName);
-      }
-    } catch (error) {
-      console.error('Error syncing from Firebase:', error);
-      // Don't break the app if sync fails
-    } finally {
-      if (setLoadingState) {
-        setLoading(false);
-      }
-    }
-  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async user => {
@@ -390,25 +348,6 @@ const AppContent: React.FC = () => {
     }
   }, [strategies, activeView]);
 
-  // Sync from Firebase when tab becomes visible
-  useEffect(() => {
-    let isSyncing = false;
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && auth.currentUser && !isSyncing) {
-        isSyncing = true;
-        syncFromFirebase(auth.currentUser, false).finally(() => {
-          isSyncing = false;
-        });
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, []);
 
   // Validate URL when window gets focus (catches edge cases where URL might be invalid)
   useEffect(() => {
