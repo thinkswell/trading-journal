@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Strategy, Trade, TradeStatus } from '../types';
 import { getTradeStats } from '../lib/tradeCalculations';
 import { useSettings } from '../contexts/SettingsContext';
@@ -8,10 +9,12 @@ import { TrashIcon } from './icons/TrashIcon';
 import { MoveIcon } from './icons/MoveIcon';
 import { CopyIcon } from './icons/CopyIcon';
 import { ExternalLinkIcon } from './icons/ExternalLinkIcon';
+import { DocumentTextIcon } from './icons/DocumentTextIcon';
 import { openTradingView } from '../lib/tradingViewUtils';
 import { FiAlertTriangle, FiInfo } from 'react-icons/fi';
 import MoveTradeModal from './MoveTradeModal';
 import CopyTradeModal from './CopyTradeModal';
+import ConfirmationModal from './ConfirmationModal';
 
 type SortOption = 'date' | 'asset' | 'percentInvested';
 
@@ -58,16 +61,39 @@ const TradeRow: React.FC<{
     onViewDetails?: (trade: Trade) => void,
     onOpenMoveModal?: (trade: Trade) => void;
     onOpenCopyModal?: (trade: Trade) => void;
+    onOpenDeleteModal?: (trade: Trade) => void;
     capital?: number;
-}> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, onOpenMoveModal, onOpenCopyModal, capital }) => {
+}> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, onOpenMoveModal, onOpenCopyModal, onOpenDeleteModal, capital }) => {
     const { currency } = useSettings();
     const stats = getTradeStats(trade);
     const percentOfCapital = capital && capital > 0 ? (stats.totalInvested / capital) * 100 : 0;
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // Close menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node) &&
+                menuButtonRef.current && !menuButtonRef.current.contains(event.target as Node)) {
+                setIsMenuOpen(false);
+                setMenuPosition(null);
+            }
+        };
+
+        if (isMenuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [isMenuOpen]);
 
     return (
         <tr 
-            className="border-b border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.05)] transition-all duration-200 cursor-pointer group"
-            onClick={() => onViewDetails?.(trade)}
+            className="border-b border-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.05)] transition-all duration-200 group"
         >
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{new Date(trade.date).toLocaleDateString()}</td>
             <td className="p-4">
@@ -163,39 +189,135 @@ const TradeRow: React.FC<{
                 </div>
             </td>
             <td className="p-4 text-right">
-                <div className="flex items-center justify-end gap-1">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onEdit(trade); }} 
-                    className="text-[#6A5ACD] hover:text-[#8b5cf6] hover:bg-[#6A5ACD]/10 p-2 rounded-lg transition-all duration-200 hover:scale-110"
-                    aria-label="Edit Trade"
-                  >
-                      <EditIcon />
-                  </button>
-                  {onOpenMoveModal && (
+                <div className="flex items-center justify-end gap-1 relative">
+                  {/* Menu Button (3 dots) */}
+                  <div className="relative">
                     <button 
-                      onClick={(e) => { e.stopPropagation(); onOpenMoveModal(trade); }} 
-                      className="text-[#06b6d4] hover:text-[#22d3ee] hover:bg-[#06b6d4]/10 p-2 rounded-lg transition-all duration-200 hover:scale-110"
-                      aria-label="Move Trade"
+                      ref={menuButtonRef}
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        if (isMenuOpen) {
+                          setIsMenuOpen(false);
+                          setMenuPosition(null);
+                        } else {
+                          // Calculate position when opening
+                          const button = e.currentTarget;
+                          const buttonRect = button.getBoundingClientRect();
+                          const viewportHeight = window.innerHeight;
+                          const menuHeight = 120; // Approximate menu height
+                          
+                          // Check if menu would overflow below viewport
+                          const spaceBelow = viewportHeight - buttonRect.bottom;
+                          const spaceAbove = buttonRect.top;
+                          
+                          if (spaceBelow < menuHeight && spaceAbove > menuHeight) {
+                            // Position above button
+                            setMenuPosition({
+                              top: buttonRect.top - menuHeight - 8,
+                              right: window.innerWidth - buttonRect.right
+                            });
+                          } else {
+                            // Position below button
+                            setMenuPosition({
+                              top: buttonRect.bottom + 8,
+                              right: window.innerWidth - buttonRect.right
+                            });
+                          }
+                          setIsMenuOpen(true);
+                        }
+                      }} 
+                      className="text-[#A0A0A0] hover:text-white hover:bg-[rgba(255,255,255,0.1)] p-2 rounded-lg transition-all duration-200"
+                      aria-label="More options"
                     >
-                        <MoveIcon />
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <circle cx="8" cy="3" r="1.5"/>
+                        <circle cx="8" cy="8" r="1.5"/>
+                        <circle cx="8" cy="13" r="1.5"/>
+                      </svg>
                     </button>
-                  )}
-                  {onOpenCopyModal && (
+                    {/* Dropdown Menu */}
+                    {isMenuOpen && menuPosition && typeof document !== 'undefined' && createPortal(
+                      <div 
+                        ref={menuRef}
+                        className="fixed bg-[#2C2C2C] border border-[rgba(255,255,255,0.1)] rounded-lg shadow-lg z-50 min-w-[120px]"
+                        style={{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsMenuOpen(false);
+                            setMenuPosition(null);
+                            onEdit(trade);
+                          }}
+                          className="w-full text-left px-4 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.1)] flex items-center gap-2 transition-colors"
+                        >
+                          <span className="text-[#6A5ACD] w-4 h-4 flex items-center justify-center"><EditIcon /></span>
+                          Edit
+                        </button>
+                        {onOpenMoveModal && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              setMenuPosition(null);
+                              onOpenMoveModal(trade);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.1)] flex items-center gap-2 transition-colors"
+                          >
+                            <span className="text-[#06b6d4] w-4 h-4 flex items-center justify-center"><MoveIcon /></span>
+                            Move
+                          </button>
+                        )}
+                        {onOpenCopyModal && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsMenuOpen(false);
+                              setMenuPosition(null);
+                              onOpenCopyModal(trade);
+                            }}
+                            className="w-full text-left px-4 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.1)] flex items-center gap-2 transition-colors"
+                          >
+                            <span className="text-[#8b5cf6] w-4 h-4 flex items-center justify-center"><CopyIcon /></span>
+                            Copy
+                          </button>
+                        )}
+                      </div>,
+                      document.body
+                    )}
+                  </div>
+                  {/* Open/View Button */}
+                  <div className="relative group/open-tooltip inline-block">
                     <button 
-                      onClick={(e) => { e.stopPropagation(); onOpenCopyModal(trade); }} 
-                      className="text-[#8b5cf6] hover:text-[#a78bfa] hover:bg-[#8b5cf6]/10 p-2 rounded-lg transition-all duration-200 hover:scale-110"
-                      aria-label="Copy Trade"
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        onViewDetails?.(trade);
+                      }} 
+                      className="text-[#A0A0A0] hover:text-[#6A5ACD] hover:bg-[#6A5ACD]/10 p-2 rounded-lg transition-all duration-200"
+                      aria-label="View Trade Details"
                     >
-                        <CopyIcon />
+                      <DocumentTextIcon />
                     </button>
-                  )}
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onDelete(trade.id); }} 
-                    className="text-[#DC3545] hover:text-[#e85d75] hover:bg-[#DC3545]/10 p-2 rounded-lg transition-all duration-200 hover:scale-110"
-                    aria-label="Delete Trade"
-                  >
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/open-tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+                      View Trade Details
+                    </div>
+                  </div>
+                  {/* Delete Button */}
+                  <div className="relative group/delete-tooltip inline-block">
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        onOpenDeleteModal?.(trade);
+                      }} 
+                      className="text-[#DC3545] hover:text-[#e85d75] hover:bg-[#DC3545]/10 p-2 rounded-lg transition-all duration-200"
+                      aria-label="Delete Trade"
+                    >
                       <TrashIcon />
-                  </button>
+                    </button>
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/delete-tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+                      Delete Trade
+                    </div>
+                  </div>
                 </div>
             </td>
         </tr>
@@ -210,12 +332,36 @@ const TradeCard: React.FC<{
   onViewDetails?: (trade: Trade) => void;
   onOpenMoveModal?: (trade: Trade) => void;
   onOpenCopyModal?: (trade: Trade) => void;
+  onOpenDeleteModal?: (trade: Trade) => void;
   capital?: number;
-}> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, onOpenMoveModal, onOpenCopyModal, capital }) => {
+}> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, onOpenMoveModal, onOpenCopyModal, onOpenDeleteModal, capital }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { currency } = useSettings();
   const stats = getTradeStats(trade);
   const percentOfCapital = capital && capital > 0 ? (stats.totalInvested / capital) * 100 : 0;
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node) &&
+          menuButtonRef.current && !menuButtonRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+        setMenuPosition(null);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen]);
 
   return (
     <div 
@@ -265,7 +411,130 @@ const TradeCard: React.FC<{
             {strategyName && <span className="ml-2">• {strategyName}</span>}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        {/* Mobile: Only show 3 dots menu button */}
+        <div className="relative md:hidden">
+          <button 
+            ref={menuButtonRef}
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              if (isMenuOpen) {
+                setIsMenuOpen(false);
+                setMenuPosition(null);
+              } else {
+                // Calculate position when opening
+                const button = e.currentTarget;
+                const buttonRect = button.getBoundingClientRect();
+                const viewportHeight = window.innerHeight;
+                const menuHeight = 200; // Approximate menu height for all actions
+                
+                // Check if menu would overflow below viewport
+                const spaceBelow = viewportHeight - buttonRect.bottom;
+                const spaceAbove = buttonRect.top;
+                
+                if (spaceBelow < menuHeight && spaceAbove > menuHeight) {
+                  // Position above button
+                  setMenuPosition({
+                    top: buttonRect.top - menuHeight - 8,
+                    right: window.innerWidth - buttonRect.right
+                  });
+                } else {
+                  // Position below button
+                  setMenuPosition({
+                    top: buttonRect.bottom + 8,
+                    right: window.innerWidth - buttonRect.right
+                  });
+                }
+                setIsMenuOpen(true);
+              }
+            }} 
+            className="text-[#A0A0A0] hover:text-white hover:bg-[rgba(255,255,255,0.1)] p-2 rounded-lg transition-all duration-200"
+            aria-label="More options"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="8" cy="3" r="1.5"/>
+              <circle cx="8" cy="8" r="1.5"/>
+              <circle cx="8" cy="13" r="1.5"/>
+            </svg>
+          </button>
+          {/* Dropdown Menu */}
+          {isMenuOpen && menuPosition && createPortal(
+            <div 
+              ref={menuRef}
+              className="fixed bg-[#2C2C2C] border border-[rgba(255,255,255,0.1)] rounded-lg shadow-lg z-50 min-w-[150px]"
+              style={{ top: `${menuPosition.top}px`, right: `${menuPosition.right}px` }}
+            >
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMenuOpen(false);
+                  setMenuPosition(null);
+                  onEdit(trade);
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.1)] flex items-center gap-2 transition-colors"
+              >
+                <span className="text-[#6A5ACD] w-4 h-4 flex items-center justify-center"><EditIcon /></span>
+                Edit
+              </button>
+              {onOpenMoveModal && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    setMenuPosition(null);
+                    onOpenMoveModal(trade);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.1)] flex items-center gap-2 transition-colors"
+                >
+                  <span className="text-[#06b6d4] w-4 h-4 flex items-center justify-center"><MoveIcon /></span>
+                  Move
+                </button>
+              )}
+              {onOpenCopyModal && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    setMenuPosition(null);
+                    onOpenCopyModal(trade);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.1)] flex items-center gap-2 transition-colors"
+                >
+                  <span className="text-[#8b5cf6] w-4 h-4 flex items-center justify-center"><CopyIcon /></span>
+                  Copy
+                </button>
+              )}
+              {onViewDetails && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    setMenuPosition(null);
+                    onViewDetails(trade);
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.1)] flex items-center gap-2 transition-colors"
+                >
+                  <span className="text-[#6A5ACD] w-4 h-4 flex items-center justify-center"><DocumentTextIcon /></span>
+                  View Details
+                </button>
+              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMenuOpen(false);
+                  setMenuPosition(null);
+                  onOpenDeleteModal?.(trade);
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-white hover:bg-[rgba(255,255,255,0.1)] flex items-center gap-2 transition-colors text-[#DC3545]"
+              >
+                <span className="text-[#DC3545] w-4 h-4 flex items-center justify-center"><TrashIcon /></span>
+                Delete
+                        </button>
+                      </div>,
+                      document.body
+                    )}
+                  </div>
+        {/* Desktop: Show all action buttons */}
+        <div className="hidden md:flex items-center gap-2">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -303,7 +572,7 @@ const TradeCard: React.FC<{
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onDelete(trade.id);
+              onOpenDeleteModal?.(trade);
             }}
             className="text-[#DC3545] hover:text-[#e85d75] hover:bg-[#DC3545]/10 p-2 rounded-lg transition-all duration-200"
             aria-label="Delete Trade"
@@ -403,8 +672,11 @@ const TradeCard: React.FC<{
 const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDelete, onViewDetails, onMoveTrade, onCopyTrade, strategyCapital, strategies, sortOption, onSortChange }) => {
   const [selectedTradeForMove, setSelectedTradeForMove] = useState<Trade | null>(null);
   const [selectedTradeForCopy, setSelectedTradeForCopy] = useState<Trade | null>(null);
+  const [selectedTradeForDelete, setSelectedTradeForDelete] = useState<Trade | null>(null);
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const { currency } = useSettings();
 
   if (trades.length === 0) {
     return <div className="text-center py-10 text-[#A0A0A0]">No trades recorded yet.</div>;
@@ -445,6 +717,19 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
     }
   };
 
+  const handleOpenDeleteModal = (trade: Trade) => {
+    setSelectedTradeForDelete(trade);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (selectedTradeForDelete) {
+      onDelete(selectedTradeForDelete.id);
+      setIsDeleteModalOpen(false);
+      setSelectedTradeForDelete(null);
+    }
+  };
+
   const SortIndicator: React.FC<{ option: SortOption }> = ({ option }) => {
     if (!isSortable || sortOption !== option) return null;
     return <span className="ml-1 text-[#6A5ACD]">●</span>;
@@ -453,7 +738,7 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
   return (
     <>
       {/* Mobile Card View */}
-      <div className="block md:hidden space-y-3">
+      <div className="block md:hidden space-y-3 mb-20">
         {trades.map((trade) => {
           let capitalForTrade: number | undefined;
           if (strategyCapital) {
@@ -473,6 +758,7 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
               onViewDetails={onViewDetails}
               onOpenMoveModal={onMoveTrade ? handleOpenMoveModal : undefined}
               onOpenCopyModal={onCopyTrade ? handleOpenCopyModal : undefined}
+              onOpenDeleteModal={handleOpenDeleteModal}
               capital={capitalForTrade}
             />
           );
@@ -480,7 +766,7 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
       </div>
 
       {/* Desktop Table View */}
-      <div className="hidden md:block overflow-x-auto rounded-lg border border-[rgba(255,255,255,0.1)] glass-card">
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-[rgba(255,255,255,0.1)] glass-card mb-20 lg:mb-0">
         <table className="w-full text-left">
           <thead className="text-xs text-[#A0A0A0] uppercase tracking-wider border-b border-[rgba(255,255,255,0.1)]">
             <tr>
@@ -534,6 +820,7 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
                   onViewDetails={onViewDetails}
                   onOpenMoveModal={onMoveTrade ? handleOpenMoveModal : undefined}
                   onOpenCopyModal={onCopyTrade ? handleOpenCopyModal : undefined}
+                  onOpenDeleteModal={handleOpenDeleteModal}
                   capital={capitalForTrade}
                 />
               );
@@ -565,6 +852,19 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
           strategies={strategies}
           currentStrategyId={selectedTradeForCopy.strategyId}
           tradeAsset={selectedTradeForCopy.asset}
+        />
+      )}
+      {selectedTradeForDelete && (
+        <ConfirmationModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            setIsDeleteModalOpen(false);
+            setSelectedTradeForDelete(null);
+          }}
+          onConfirm={handleConfirmDelete}
+          title="Delete Trade"
+          message={`Are you sure you want to delete the trade for "${selectedTradeForDelete.asset}"? This action cannot be undone.`}
+          confirmButtonText="Delete Trade"
         />
       )}
     </>

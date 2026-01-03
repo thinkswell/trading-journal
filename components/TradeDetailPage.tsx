@@ -28,7 +28,7 @@ interface TradeDetailPageProps {
   backButtonText: string;
 }
 
-const DetailStatCard: React.FC<{ title: string; value: string; valueColor?: string; helpText?: string }> = ({ title, value, valueColor = 'text-white', helpText }) => (
+const DetailStatCard: React.FC<{ title: string; value: string; valueColor?: string; helpText?: string | React.ReactNode }> = ({ title, value, valueColor = 'text-white', helpText }) => (
     <div className="glass-card p-3 md:p-5 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 hover:scale-[1.02]">
         <h4 className="text-xs font-bold text-[#A0A0A0] uppercase tracking-wider mb-2">{title}</h4>
         <p className={`text-2xl md:text-3xl font-extrabold ${valueColor} mb-1`}>{value}</p>
@@ -58,15 +58,25 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
   const effectOnCapital = strategy.initialCapital > 0 ? (stats.totalRiskValue / strategy.initialCapital) * 100 : 0;
   const initialRiskOnCapital = strategy.initialCapital > 0 ? (stats.initialTotalRisk / strategy.initialCapital) * 100 : 0;
   const gainOnCapital = strategy.initialCapital > 0 ? (stats.realizedPL / strategy.initialCapital) * 100 : 0;
+  const percentCapitalUsed = strategy.initialCapital > 0 ? (stats.totalInvested / strategy.initialCapital) * 100 : 0;
 
   const plColor = stats.realizedPL > 0 ? 'text-[#28A745]' : stats.realizedPL < 0 ? 'text-[#DC3545]' : 'text-gray-300';
   
   const entries = [{ id: 'initial', price: trade.entryPrice, quantity: trade.quantity, type: 'Initial Entry' }, ...trade.pyramids.map(p => ({...p, type: 'Pyramid'}))];
 
   // Calculate days held
-  const calculateDaysHeld = (): string | null => {
+  const calculateDaysHeld = (): { value: string; days: number | null } => {
     if (trade.status === 'open' || !trade.closeDate) {
-      return null;
+      // For open trades, calculate days from entry to now
+      const entryDate = new Date(trade.date);
+      const now = new Date();
+      const diffTime = now.getTime() - entryDate.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 1) {
+        return { value: '1 day', days: 1 };
+      }
+      return { value: `${diffDays} days`, days: diffDays };
     }
     
     const entryDate = new Date(trade.date);
@@ -75,12 +85,21 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
     
     if (diffDays === 1) {
-      return '1 day';
+      return { value: '1 day', days: 1 };
     }
-    return `${diffDays} days`;
+    return { value: `${diffDays} days`, days: diffDays };
   };
 
   const daysHeld = calculateDaysHeld();
+  
+  // Format dates
+  const formatDate = (dateString: string): string => {
+    return new Date(dateString).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
 
   // Dynamic status recalculation - only update if status wasn't manually set
   useEffect(() => {
@@ -178,15 +197,12 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
         </div>
 
         <div className="mb-4 md:mb-6">
-            <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-4 flex items-center gap-3">
+            <h2 className="text-xl md:text-2xl font-bold text-white mb-3 md:mb-4 flex items-center gap-3 flex-wrap">
               <TrendingUpIcon />
               Trade Analytics
-              {daysHeld && (
-                <>
-                  <span className="text-[#A0A0A0] font-normal">|</span>
-                  <span className="text-[#A0A0A0] font-normal">{daysHeld}</span>
-                </>
-              )}
+              <span className="text-[#A0A0A0] font-normal text-base md:text-lg">
+                | {formatDate(trade.date)} - {trade.closeDate ? formatDate(trade.closeDate) : 'Open'} | {daysHeld.value}
+              </span>
             </h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
                 <DetailStatCard 
@@ -216,7 +232,17 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                 <DetailStatCard 
                     title="Total Investment" 
                     value={formatCurrency(stats.totalInvested, currency)}
-                    helpText={`${stats.totalBoughtQty} units @ ${formatCurrency(stats.avgEntryPrice, currency)} avg.`}
+                    helpText={
+                        <span>
+                            <span className="relative group/percent inline-block">
+                                <span className="cursor-help">{percentCapitalUsed.toFixed(2)}%</span>
+                                <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/percent:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+                                    % of capital used
+                                </div>
+                            </span>
+                            {` | ${stats.totalBoughtQty} units @ ${formatCurrency(stats.avgEntryPrice, currency)} avg.`}
+                        </span>
+                    }
                 />
                 <DetailStatCard 
                     title="Avg. Exit Price" 

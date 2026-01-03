@@ -24,18 +24,18 @@ interface DashboardProps {
   onCopyTrade?: (trade: Trade, targetStrategyId: string) => void;
 }
 
-type StatKey = 'totalCapital' | 'totalPL' | 'gainOnCapital' | 'amountInvested' | 'riskOnCapital' | 'winRate' | 'profitFactor' | 'totalTrades';
+type StatKey = 'totalCapital' | 'totalPL' | 'gainOnCapital' | 'amountInvested' | 'riskOnCapital' | 'winRate' | 'totalTrades';
 type SortOption = 'date' | 'asset' | 'percentInvested';
 
 const DEFAULT_PINNED_STATS: StatKey[] = ['totalCapital', 'gainOnCapital'];
 
 const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo, onOpenTradeForm, onDeleteTrade, onMoveTrade, onCopyTrade }) => {
-  const [assetFilter, setAssetFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<TradeStatus | 'all'>('all');
-  const [strategyFilter, setStrategyFilter] = useState<string>('all');
+  const [assetFilter, setAssetFilter] = useLocalStorage<string>('dashboard-asset-filter', '');
+  const [statusFilter, setStatusFilter] = useLocalStorage<TradeStatus | 'all'>('dashboard-status-filter', 'all');
+  const [strategyFilter, setStrategyFilter] = useLocalStorage<string>('dashboard-strategy-filter', 'all');
   const [pinnedStats, setPinnedStats] = useLocalStorage<StatKey[]>('dashboard-pinned-stats', DEFAULT_PINNED_STATS);
   const [isAccordionOpen, setIsAccordionOpen] = useState(false);
-  const [sortOption, setSortOption] = useState<SortOption>('date');
+  const [sortOption, setSortOption] = useLocalStorage<SortOption>('dashboard-sort-option', 'date');
   const { currency } = useSettings();
 
   const filteredTrades = useMemo(() => {
@@ -61,15 +61,19 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
             totalPL += tradeStats.realizedPL;
         } else {
             amountInvested += tradeStats.currentValue;
-            totalRisk += tradeStats.totalRiskValue;
+            // Only add risk if it's actual risk (positive value)
+            // If trade is profitable (negative risk), treat as 0 risk
+            totalRisk += Math.max(0, tradeStats.totalRiskValue);
         }
     });
 
     const totalTrades = filteredTrades.length;
-    const winningTrades = closedTrades.filter(t => getTradeStats(t).realizedPL > 0);
-    const losingTrades = closedTrades.filter(t => getTradeStats(t).realizedPL < 0);
+    const winningTrades = closedTrades.filter(t => t.status === 'win');
+    const losingTrades = closedTrades.filter(t => t.status === 'loss');
+    const breakevenTrades = closedTrades.filter(t => t.status === 'breakeven');
 
-    const winRate = closedTrades.length > 0 ? (winningTrades.length / closedTrades.length) * 100 : 0;
+    // Treat breakevens as wins when calculating win rate
+    const winRate = closedTrades.length > 0 ? ((winningTrades.length + breakevenTrades.length) / closedTrades.length) * 100 : 0;
     
     const totalWinsValue = winningTrades.reduce((sum, trade) => sum + getTradeStats(trade).realizedPL, 0);
     const totalLossesValue = losingTrades.reduce((sum, trade) => sum + Math.abs(getTradeStats(trade).realizedPL), 0);
@@ -88,7 +92,10 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
       riskOnCapital,
       gainOnCapital,
       totalCapital,
-      totalRisk
+      totalRisk,
+      winningTradesCount: winningTrades.length,
+      losingTradesCount: losingTrades.length,
+      breakevenTradesCount: breakevenTrades.length
     };
   }, [filteredTrades, strategies]);
   
@@ -138,14 +145,40 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
 
   // Define all stats with their keys
   const allStats = useMemo(() => {
+    // Format win rate sublabel with tooltips
+    const winRateSublabel = (
+      <span className="text-sm text-[#A0A0A0]">
+        <span className="relative group/w-tooltip inline-block">
+          <span className="cursor-help">W:</span>
+          <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/w-tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+            Number of Wins
+          </div>
+        </span>
+        {` ${stats.winningTradesCount}, `}
+        <span className="relative group/l-tooltip inline-block">
+          <span className="cursor-help">L:</span>
+          <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/l-tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+            Number of Losses
+          </div>
+        </span>
+        {` ${stats.losingTradesCount}, `}
+        <span className="relative group/b-tooltip inline-block">
+          <span className="cursor-help">B:</span>
+          <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-[#2C2C2C] text-white text-xs rounded-lg opacity-0 group-hover/b-tooltip:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-[rgba(255,255,255,0.1)]">
+            Number of Breakevens
+          </div>
+        </span>
+        {` ${stats.breakevenTradesCount}`}
+      </span>
+    );
+
     return [
       { key: 'totalCapital' as StatKey, title: 'Total Capital', value: formatCurrency(stats.totalCapital, currency), icon: <MoneyIcon />, isPositive: undefined },
       { key: 'totalPL' as StatKey, title: 'Total P/L', value: formatCurrency(stats.totalPL, currency), icon: <BagOfMoneyIcon />, isPositive: stats.totalPL >= 0 },
       { key: 'gainOnCapital' as StatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0 },
       { key: 'amountInvested' as StatKey, title: 'Amount Invested', value: formatCurrency(stats.amountInvested, currency), icon: <ScaleIcon />, isPositive: undefined },
       { key: 'riskOnCapital' as StatKey, title: '% Risk on Capital', value: `${stats.riskOnCapital.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskOnCapital < 5, sublabel: formatCurrency(stats.totalRisk, currency) },
-      { key: 'winRate' as StatKey, title: 'Win Rate', value: `${stats.winRate.toFixed(1)}%`, icon: <TrendingUpIcon />, isPositive: stats.winRate >= 50 },
-      { key: 'profitFactor' as StatKey, title: 'Profit Factor', value: stats.profitFactor.toFixed(2), icon: <ScaleIcon />, isPositive: stats.profitFactor >= 1 },
+      { key: 'winRate' as StatKey, title: 'Win Rate', value: `${stats.winRate.toFixed(1)}%`, icon: <TrendingUpIcon />, isPositive: stats.winRate >= 50, sublabel: winRateSublabel },
       { key: 'totalTrades' as StatKey, title: 'Total Trades', value: stats.totalTrades.toString(), icon: <CalculatorIcon />, isPositive: undefined },
     ];
   }, [stats, currency]);
