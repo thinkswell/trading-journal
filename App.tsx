@@ -8,6 +8,8 @@ import Dashboard from './components/Dashboard';
 import StrategyView from './components/StrategyView';
 import TradeDetailPage from './components/TradeDetailPage';
 import ProfilePage from './components/ProfilePage';
+import ToolsPage from './components/ToolsPage';
+import QuantityCalculator from './components/QuantityCalculator';
 import Modal from './components/Modal';
 import AuthModal from './components/AuthModal';
 import SettingsModal from './components/SettingsModal';
@@ -132,6 +134,21 @@ const getViewFromPath = (pathname: string, strategies: Strategy[]): string => {
     return 'profile';
   }
   
+  if (path === 'tools') {
+    return 'tools';
+  }
+  
+  // Check for tools route: /tools/:tool-slug
+  const toolsMatch = path.match(/^tools\/(.+)$/);
+  if (toolsMatch) {
+    const toolSlug = decodeURIComponent(toolsMatch[1]);
+    if (toolSlug === 'quantity-calculator') {
+      return 'tools/quantity-calculator';
+    }
+    // Unknown tool, redirect to tools
+    return 'tools';
+  }
+  
   // Check for strategy route: /strategy/:slug
   const strategyMatch = path.match(/^strategy\/(.+)$/);
   if (strategyMatch) {
@@ -176,6 +193,14 @@ const getPathFromView = (view: string, strategies: Strategy[]): string => {
   
   if (view === 'profile') {
     return '/profile';
+  }
+  
+  if (view === 'tools') {
+    return '/tools';
+  }
+  
+  if (view === 'tools/quantity-calculator') {
+    return '/tools/quantity-calculator';
   }
   
   // Check if it's a trade view
@@ -321,7 +346,7 @@ const AppContent: React.FC = () => {
   // Update URL when strategies change (in case current strategy/trade was deleted)
   useEffect(() => {
     // Check if current view is still valid
-    if (activeView === 'dashboard' || activeView === 'profile') {
+    if (activeView === 'dashboard' || activeView === 'profile' || activeView === 'tools' || activeView.startsWith('tools/')) {
       return; // These are always valid
     }
 
@@ -536,6 +561,14 @@ const AppContent: React.FC = () => {
                     onUpdateProfile={handleUpdateProfile}
                     onLogout={handleLogout}
                 />;
+    }
+
+    if (activeView === 'tools') {
+        return <ToolsPage navigateTo={navigateTo} />;
+    }
+
+    if (activeView === 'tools/quantity-calculator') {
+        return <QuantityCalculator />;
     }
 
     const isTradeView = activeView.startsWith('trade/');

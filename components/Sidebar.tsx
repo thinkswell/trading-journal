@@ -5,6 +5,7 @@ import { TargetIcon } from './icons/TargetIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import { UserIcon } from './icons/UserIcon';
 import { SettingsIcon } from './icons/SettingsIcon';
+import { ToolsIcon } from './icons/ToolsIcon';
 import { User } from 'firebase/auth';
 import { FiBriefcase } from 'react-icons/fi';
 
@@ -72,6 +73,17 @@ const Sidebar: React.FC<SidebarProps> = ({ strategies, activeView, navigateTo, o
 
       <div className="mt-auto relative z-10">
          <hr className="border-[rgba(255,255,255,0.1)] my-3" />
+         <div 
+            onClick={() => navigateTo('tools')}
+            className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-300 mb-2 ${
+                activeView === 'tools' 
+                  ? 'bg-[rgba(255,255,255,0.15)] text-white border border-[rgba(255,255,255,0.2)]' 
+                  : 'hover:bg-[rgba(255,255,255,0.1)] text-[#E0E0E0] hover:text-white'
+            }`}
+        >
+            <ToolsIcon />
+            <span className="font-medium">Tools</span>
+        </div>
           {currentUser ? (
             <div className="flex items-center justify-between gap-2">
                 <div 

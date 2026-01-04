@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Strategy } from '../types';
 import { ChartIcon } from './icons/ChartIcon';
 import { TargetIcon } from './icons/TargetIcon';
+import { ToolsIcon } from './icons/ToolsIcon';
 import { UserIcon } from './icons/UserIcon';
 import { SettingsIcon } from './icons/SettingsIcon';
 import { User } from 'firebase/auth';
@@ -37,6 +38,9 @@ const BottomNav: React.FC<BottomNavProps> = ({
     if (view === 'profile') {
       return activeView === 'profile';
     }
+    if (view === 'tools') {
+      return activeView === 'tools' || activeView.startsWith('tools/');
+    }
     if (view === 'strategies') {
       return strategies.some(s => s.id === activeView);
     }
@@ -71,6 +75,19 @@ const BottomNav: React.FC<BottomNavProps> = ({
           >
             <TargetIcon />
             <span className="text-xs font-medium">Strategies</span>
+          </button>
+
+          {/* Tools */}
+          <button
+            onClick={() => navigateTo('tools')}
+            className={`flex flex-col items-center justify-center gap-1 p-2 rounded-lg transition-all duration-300 flex-1 ${
+              isActive('tools')
+                ? 'bg-gradient-to-r from-[#6A5ACD] to-[#8b5cf6] text-white'
+                : 'text-[#A0A0A0] hover:text-white'
+            }`}
+          >
+            <ToolsIcon />
+            <span className="text-xs font-medium">Tools</span>
           </button>
 
           {/* Profile/Login */}
