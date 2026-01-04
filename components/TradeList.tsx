@@ -16,7 +16,7 @@ import MoveTradeModal from './MoveTradeModal';
 import CopyTradeModal from './CopyTradeModal';
 import ConfirmationModal from './ConfirmationModal';
 
-type SortOption = 'date' | 'asset' | 'percentInvested';
+type SortOption = 'date' | 'date-desc' | 'asset' | 'asset-desc' | 'percentInvested' | 'percentInvested-desc';
 
 interface TradeListProps {
   trades: Trade[];
@@ -687,7 +687,34 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
   
   const handleSort = (option: SortOption) => {
     if (onSortChange) {
-      onSortChange(option);
+      // Special handling for toggling: toggle between ascending and descending
+      if (option === 'asset') {
+        if (sortOption === 'asset') {
+          onSortChange('asset-desc');
+        } else if (sortOption === 'asset-desc') {
+          onSortChange('asset');
+        } else {
+          onSortChange('asset');
+        }
+      } else if (option === 'date') {
+        if (sortOption === 'date') {
+          onSortChange('date-desc');
+        } else if (sortOption === 'date-desc') {
+          onSortChange('date');
+        } else {
+          onSortChange('date');
+        }
+      } else if (option === 'percentInvested') {
+        if (sortOption === 'percentInvested') {
+          onSortChange('percentInvested-desc');
+        } else if (sortOption === 'percentInvested-desc') {
+          onSortChange('percentInvested');
+        } else {
+          onSortChange('percentInvested');
+        }
+      } else {
+        onSortChange(option);
+      }
     }
   };
 
@@ -731,8 +758,27 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
   };
 
   const SortIndicator: React.FC<{ option: SortOption }> = ({ option }) => {
-    if (!isSortable || sortOption !== option) return null;
-    return <span className="ml-1 text-[#6A5ACD]">●</span>;
+    if (!isSortable) return null;
+    
+    // For date, show indicator for both 'date' and 'date-desc'
+    if (option === 'date' && (sortOption === 'date' || sortOption === 'date-desc')) {
+      return <span className="ml-1 text-[#6A5ACD]">{sortOption === 'date-desc' ? '↑' : '↓'}</span>;
+    }
+    
+    // For asset, show indicator for both 'asset' and 'asset-desc'
+    if (option === 'asset' && (sortOption === 'asset' || sortOption === 'asset-desc')) {
+      return <span className="ml-1 text-[#6A5ACD]">{sortOption === 'asset-desc' ? '↓' : '↑'}</span>;
+    }
+    
+    // For percentInvested, show indicator for both 'percentInvested' and 'percentInvested-desc'
+    if (option === 'percentInvested' && (sortOption === 'percentInvested' || sortOption === 'percentInvested-desc')) {
+      return <span className="ml-1 text-[#6A5ACD]">{sortOption === 'percentInvested-desc' ? '↑' : '↓'}</span>;
+    }
+    
+    if (sortOption === option) {
+      return <span className="ml-1 text-[#6A5ACD]">●</span>;
+    }
+    return null;
   };
 
   return (

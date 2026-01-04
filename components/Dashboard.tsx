@@ -25,7 +25,7 @@ interface DashboardProps {
 }
 
 type StatKey = 'totalCapital' | 'totalPL' | 'gainOnCapital' | 'amountInvested' | 'riskOnCapital' | 'winRate' | 'totalTrades';
-type SortOption = 'date' | 'asset' | 'percentInvested';
+type SortOption = 'date' | 'date-desc' | 'asset' | 'asset-desc' | 'percentInvested' | 'percentInvested-desc';
 
 const DEFAULT_PINNED_STATS: StatKey[] = ['totalCapital', 'gainOnCapital'];
 
@@ -114,9 +114,15 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
         case 'date':
           // Newest first (descending)
           return new Date(b.date).getTime() - new Date(a.date).getTime();
+        case 'date-desc':
+          // Oldest first (ascending)
+          return new Date(a.date).getTime() - new Date(b.date).getTime();
         case 'asset':
           // A-Z (ascending)
           return a.asset.localeCompare(b.asset);
+        case 'asset-desc':
+          // Z-A (descending)
+          return b.asset.localeCompare(a.asset);
         case 'percentInvested':
           // Highest first (descending)
           const statsA = getTradeStats(a);
@@ -128,11 +134,33 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
           const percentA = capitalA > 0 ? (statsA.totalInvested / capitalA) * 100 : 0;
           const percentB = capitalB > 0 ? (statsB.totalInvested / capitalB) * 100 : 0;
           return percentB - percentA;
+        case 'percentInvested-desc':
+          // Lowest first (ascending)
+          const statsADesc = getTradeStats(a);
+          const statsBDesc = getTradeStats(b);
+          const strategyADesc = strategies.find(s => s.id === a.strategyId);
+          const strategyBDesc = strategies.find(s => s.id === b.strategyId);
+          const capitalADesc = strategyADesc?.initialCapital || 0;
+          const capitalBDesc = strategyBDesc?.initialCapital || 0;
+          const percentADesc = capitalADesc > 0 ? (statsADesc.totalInvested / capitalADesc) * 100 : 0;
+          const percentBDesc = capitalBDesc > 0 ? (statsBDesc.totalInvested / capitalBDesc) * 100 : 0;
+          return percentADesc - percentBDesc;
         default:
           return 0;
       }
     });
   }, [filteredTrades, sortOption, strategies]);
+
+  // Check if filters are at default values
+  const isDefaultFilters = assetFilter === '' && statusFilter === 'all' && strategyFilter === 'all' && sortOption === 'date';
+
+  // Reset filters to default
+  const handleResetFilters = () => {
+    setAssetFilter('');
+    setStatusFilter('all');
+    setStrategyFilter('all');
+    setSortOption('date');
+  };
 
   const handleDeleteFromDashboard = (tradeId: string) => {
     const tradeToDelete = allTrades.find(t => t.id === tradeId);
@@ -277,6 +305,18 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
       <div className="glass-card p-4 md:p-6 rounded-xl shadow-sm">
         <div className="flex items-center justify-between mb-4 md:mb-6">
           <h2 className="text-xl md:text-2xl font-bold text-white">All Trades</h2>
+          {!isDefaultFilters && (
+            <button
+              onClick={handleResetFilters}
+              className="flex items-center gap-2 px-4 py-2 bg-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.15)] text-white rounded-lg transition-all duration-200 text-sm font-medium"
+              title="Reset filters to default"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Reset Filters
+            </button>
+          )}
         </div>
         <div className="flex flex-col md:grid md:grid-cols-3 gap-4 mb-4 md:mb-6">
           <input 
