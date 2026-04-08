@@ -166,14 +166,10 @@ const TradeRow: React.FC<{
                             <span className={`font-semibold ${rrRatio > 0 ? 'text-[#28A745]' : rrRatio < 0 ? 'text-[#DC3545]' : 'text-[#E0E0E0]'}`}>
                                 {!stats.isClosed && !hasPartialExits ? 'N/A' : (rrRatio !== 0 ? `${rrRatio > 0 ? '+' : ''}${rrRatio.toFixed(2)}R` : '0R')}
                             </span>
-                            {(!stats.isClosed && !hasPartialExits) ? null : (
-                                <>
-                                    <span className="text-[#A0A0A0] mx-1">|</span>
-                                    <span className="text-[#A0A0A0] text-[10px]">
-                                        ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
-                                    </span>
-                                </>
-                            )}
+                            <span className="text-[#A0A0A0] mx-1">|</span>
+                            <span className="text-[#A0A0A0] text-[10px]">
+                                ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
+                            </span>
                         </div>
                     );
                 })()}
@@ -639,14 +635,10 @@ const TradeCard: React.FC<{
                     <span className={`font-semibold ${rrRatio > 0 ? 'text-[#28A745]' : rrRatio < 0 ? 'text-[#DC3545]' : 'text-[#E0E0E0]'}`}>
                       {!stats.isClosed && !hasPartialExits ? 'N/A' : (rrRatio !== 0 ? `${rrRatio > 0 ? '+' : ''}${rrRatio.toFixed(2)}R` : '0R')}
                     </span>
-                    {(!stats.isClosed && !hasPartialExits) ? null : (
-                      <>
-                        <span className="text-[#A0A0A0] mx-1">|</span>
-                        <span className="text-[#A0A0A0] text-[10px]">
-                          ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
-                        </span>
-                      </>
-                    )}
+                    <span className="text-[#A0A0A0] mx-1">|</span>
+                    <span className="text-[#A0A0A0] text-[10px]">
+                      ({riskPercent.toFixed(2)}% | {rewardPercent >= 0 ? '+' : ''}{rewardPercent.toFixed(2)}%)
+                    </span>
                   </div>
                 );
               })()}
