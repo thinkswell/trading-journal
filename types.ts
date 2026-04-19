@@ -2,6 +2,7 @@ export interface PyramidEntry {
   id: string;
   price: number;
   quantity: number;
+  slPrice?: number;
 }
 
 export interface PartialExit {

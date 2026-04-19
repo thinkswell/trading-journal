@@ -112,8 +112,16 @@ export const getTradeStats = (trade: Trade): TradeStats => {
   const effectiveStopLoss = getEffectiveStopLoss(trade);
   const totalRiskValue = currentHoldingsQty * (avgEntryPrice - effectiveStopLoss);
 
-  // Initial total risk always uses initial SL (historical risk at trade entry)
-  const initialTotalRisk = totalBoughtQty > 0 ? totalBoughtQty * (avgEntryPrice - trade.initialSl) : 0;
+  // Initial total risk: sum of per-entry risks
+  // Initial entry risk
+  let initialTotalRisk = trade.quantity * (trade.entryPrice - trade.initialSl);
+  
+  // Add pyramid entry risks (each pyramid uses its own SL, or falls back to initialSl if not provided)
+  initialTotalRisk += trade.pyramids.reduce((sum, p) => {
+    const pyramidSl = p.slPrice ?? trade.initialSl;
+    return sum + p.quantity * (p.price - pyramidSl);
+  }, 0);
+  
   const rMultiple = isClosed && initialTotalRisk > 0 ? realizedPL / initialTotalRisk : 0;
   
   // For open trades with partial exits, calculate realized R-multiple based on what's been sold

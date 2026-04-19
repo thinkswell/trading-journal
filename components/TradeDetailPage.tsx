@@ -259,13 +259,29 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                 <div className="glass-card p-4 rounded-xl">
                     <h3 className="font-bold text-[#E0E0E0] mb-3">Entries</h3>
                     <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-[#A0A0A0] uppercase border-b border-[rgba(255,255,255,0.1)]"><tr><th className="p-2 pb-3">Type</th><th className="p-2 pb-3">Qty</th><th className="p-2 pb-3">Price</th><th className="p-2 pb-3">Value</th></tr></thead>
+                        <thead className="text-xs text-[#A0A0A0] uppercase border-b border-[rgba(255,255,255,0.1)]"><tr><th className="p-2 pb-3">Type</th><th className="p-2 pb-3">Qty</th><th className="p-2 pb-3">Price</th><th className="p-2 pb-3">SL</th><th className="p-2 pb-3">Value</th></tr></thead>
                         <tbody>
-                            {entries.map(e => (
+                            {entries.map((e, idx) => {
+                              const getSL = () => {
+                                if (e.type === 'Initial Entry') {
+                                  return trade.initialSl;
+                                } else if (e.type === 'Pyramid' && e.slPrice && e.slPrice > 0) {
+                                  return e.slPrice;
+                                } else {
+                                  return trade.initialSl;
+                                }
+                              };
+                              const sl = getSL();
+                              return (
                                 <tr key={e.id} className="border-b border-[rgba(255,255,255,0.05)] last:border-b-0 hover:bg-[rgba(255,255,255,0.05)] transition-colors">
-                                    <td className="p-2 text-[#E0E0E0]">{e.type}</td><td className="p-2 text-white font-medium">{e.quantity}</td><td className="p-2 text-[#E0E0E0]">{formatCurrency(e.price, currency)}</td><td className="p-2 text-white font-medium">{formatCurrency(e.quantity * e.price, currency)}</td>
+                                    <td className="p-2 text-[#E0E0E0]">{e.type}</td>
+                                    <td className="p-2 text-white font-medium">{e.quantity}</td>
+                                    <td className="p-2 text-[#E0E0E0]">{formatCurrency(e.price, currency)}</td>
+                                    <td className="p-2 text-[#E0E0E0]">{formatCurrency(sl, currency)}</td>
+                                    <td className="p-2 text-white font-medium">{formatCurrency(e.quantity * e.price, currency)}</td>
                                 </tr>
-                            ))}
+                              );
+                            })}
                         </tbody>
                     </table>
                 </div>

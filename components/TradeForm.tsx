@@ -52,6 +52,16 @@ const InputField = ({ label, name, type, value, onChange, onBlur, error, touched
     </div>
 );
 
+// Helper functions for SL conversion
+const calculatePercentageFromSL = (entryPrice: number, slPrice: number): number => {
+  if (entryPrice <= 0) return 0;
+  return Math.abs((entryPrice - slPrice) / entryPrice) * 100;
+};
+
+const calculateSLFromPercentage = (entryPrice: number, percentage: number): number => {
+  return entryPrice - (entryPrice * percentage / 100);
+};
+
 const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave, onCancel }) => {
   const [trade, setTrade] = useState<Omit<Trade, 'id' | 'strategyId'>>({
     asset: '',
@@ -67,6 +77,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
     statusManuallySet: false,
   });
   const [slInput, setSlInput] = useState('');
+  const [pyramidSlInputs, setPyramidSlInputs] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isFormDirty, setIsFormDirty] = useState(false);
@@ -91,6 +102,16 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
       setIsFormDirty(false);
       initialFormStateRef.current = { ...initialTrade };
       setSlInput(existingTrade.initialSl > 0 ? String(existingTrade.initialSl) : '');
+      
+      // Initialize pyramid SL inputs from existing data
+      const pyramidSlMap: Record<number, string> = {};
+      existingTrade.pyramids.forEach((p, index) => {
+        if (p.slPrice && p.slPrice > 0) {
+          const percentage = calculatePercentageFromSL(p.price, p.slPrice);
+          pyramidSlMap[index] = percentage.toFixed(2);
+        }
+      });
+      setPyramidSlInputs(pyramidSlMap);
     } else {
       const emptyTrade: Omit<Trade, 'id' | 'strategyId'> = {
             asset: '',
@@ -111,6 +132,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
         setIsFormDirty(false);
         initialFormStateRef.current = { ...emptyTrade };
         setSlInput('');
+        setPyramidSlInputs({});
     }
   }, [existingTrade]);
 
@@ -294,6 +316,12 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
       }
       if (p.price === trade.entryPrice) {
         newErrors[`pyramid_price_${index}`] = 'Pyramid price should be different from entry price';
+      }
+      // Validate pyramid SL if provided
+      if (p.slPrice !== undefined && p.slPrice > 0) {
+        if (p.slPrice >= p.price) {
+          newErrors[`pyramid_sl_${index}`] = 'SL must be below entry price';
+        }
       }
     });
     
@@ -483,12 +511,95 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
     }
   }
   
+  const handlePyramidSLChange = (index: number, value: string) => {
+    setPyramidSlInputs(prev => ({ ...prev, [index]: value }));
+    
+    // Clear error when user starts typing
+    const errorKey = `pyramid_sl_${index}`;
+    if (errors[errorKey]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[errorKey];
+        return newErrors;
+      });
+    }
+  };
+  
+  const parsePyramidSLInput = (inputValue: string) => {
+    const trimmedValue = inputValue.trim();
+    if (!trimmedValue) return null;
+
+    const isPercent = trimmedValue.endsWith('%');
+    const numericValue = parseFloat(trimmedValue.replace('%', ''));
+    if (isNaN(numericValue) || numericValue <= 0) {
+      return null;
+    }
+
+    return {
+      isPercent,
+      value: numericValue,
+    };
+  };
+
+  const handlePyramidSLBlur = (index: number, inputValue: string) => {
+    const errorKey = `pyramid_sl_${index}`;
+    setTouched(prev => ({ ...prev, [errorKey]: true }));
+    
+    const pyramid = trade.pyramids[index];
+    const parsed = parsePyramidSLInput(inputValue);
+
+    if (inputValue.trim() === '') {
+      // Empty is allowed (will use initial SL)
+      const newPyramids = [...trade.pyramids];
+      delete newPyramids[index].slPrice;
+      setTrade(prev => ({ ...prev, pyramids: newPyramids }));
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[errorKey];
+        return newErrors;
+      });
+      return;
+    }
+
+    if (!parsed) {
+      setErrors(prev => ({ ...prev, [errorKey]: 'SL must be a valid positive number or percentage'}));
+      return;
+    }
+
+    let slPrice: number;
+    if (parsed.isPercent) {
+      slPrice = calculateSLFromPercentage(pyramid.price, parsed.value);
+    } else {
+      slPrice = parsed.value;
+    }
+
+    if (slPrice >= pyramid.price) {
+      setErrors(prev => ({ ...prev, [errorKey]: 'SL must be below entry price' }));
+      return;
+    }
+
+    const newPyramids = [...trade.pyramids];
+    newPyramids[index].slPrice = slPrice;
+    setTrade(prev => ({ ...prev, pyramids: newPyramids }));
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[errorKey];
+      return newErrors;
+    });
+  };
+  
   const addPyramid = () => {
     setTrade(prev => ({...prev, pyramids: [...prev.pyramids, {id: `p-${Date.now()}`, price: 0, quantity: 0}]}));
   }
 
   const removePyramid = (index: number) => {
     setTrade(prev => ({...prev, pyramids: prev.pyramids.filter((_, i) => i !== index)}));
+    // Clean up the SL input for this pyramid
+    setPyramidSlInputs(prev => {
+      const newInputs = { ...prev };
+      delete newInputs[index];
+      return newInputs;
+    });
   }
 
   const handleTrailingStopChange = (index: number, value: string) => {
@@ -879,47 +990,76 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
       <div className="glass-card p-3 md:p-6 rounded-xl space-y-3 md:space-y-5">
         <h3 className="text-lg md:text-xl font-bold text-white border-b border-[rgba(255,255,255,0.1)] pb-2 md:pb-3">Pyramiding</h3>
         {trade.pyramids.map((p, index) => (
-            <div key={p.id} className="flex items-end gap-4">
-                <div className="flex-1 relative">
-                    <label className="block text-sm font-semibold text-[#A0A0A0] mb-2">Price</label>
+            <div key={p.id} className="space-y-3">
+                <div className="flex items-end gap-4">
+                    <div className="flex-1 relative">
+                        <label className="block text-sm font-semibold text-[#A0A0A0] mb-2">Price</label>
+                        <input 
+                          type="number" 
+                          value={isNaN(p.price) ? '' : p.price} 
+                          onChange={e => handlePyramidChange(index, 'price', e.target.value)} 
+                          onBlur={e => handlePyramidBlur(index, 'price', e.target.value)}
+                          onWheel={(e) => (e.target as HTMLElement).blur()} 
+                          className={`w-full border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-[#6A5ACD]/50 focus:border-[#6A5ACD]/50 focus:outline-none transition-all ${
+                            errors[`pyramid_price_${index}`] && touched[`pyramid_price_${index}`] ? 'border-[#DC3545]/50 focus:border-[#DC3545]/50 focus:ring-[#DC3545]/50' : 'border-[rgba(255,255,255,0.1)]'
+                          }`}
+                        />
+                        <div className="absolute left-0 right-0 mt-1 min-h-[18px]">
+                          {errors[`pyramid_price_${index}`] && touched[`pyramid_price_${index}`] && (
+                            <p className="text-xs text-[#DC3545] font-medium">{errors[`pyramid_price_${index}`]}</p>
+                          )}
+                        </div>
+                    </div>
+                    <div className="flex-1 relative">
+                        <label className="block text-sm font-semibold text-[#A0A0A0] mb-2">Quantity</label>
+                        <input 
+                          type="number" 
+                          value={isNaN(p.quantity) ? '' : p.quantity} 
+                          onChange={e => handlePyramidChange(index, 'quantity', e.target.value)} 
+                          onBlur={e => handlePyramidBlur(index, 'quantity', e.target.value)}
+                          onWheel={(e) => (e.target as HTMLElement).blur()} 
+                          className={`w-full border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-[#6A5ACD]/50 focus:border-[#6A5ACD]/50 focus:outline-none transition-all ${
+                            errors[`pyramid_quantity_${index}`] && touched[`pyramid_quantity_${index}`] ? 'border-[#DC3545]/50 focus:border-[#DC3545]/50 focus:ring-[#DC3545]/50' : 'border-[rgba(255,255,255,0.1)]'
+                          }`}
+                        />
+                        <div className="absolute left-0 right-0 mt-1 min-h-[18px]">
+                          {errors[`pyramid_quantity_${index}`] && touched[`pyramid_quantity_${index}`] && (
+                            <p className="text-xs text-[#DC3545] font-medium">{errors[`pyramid_quantity_${index}`]}</p>
+                          )}
+                        </div>
+                    </div>
+                    <button type="button" onClick={() => removePyramid(index)} 
+                            className="p-3 mb-0 text-[#DC3545] hover:text-[#e85d75] hover:bg-[#DC3545]/10 rounded-lg transition-all duration-200">
+                      <XIcon />
+                    </button>
+                </div>
+                <div className="relative">
+                    <label className="block text-sm font-semibold text-[#A0A0A0] mb-2">SL (% or absolute)</label>
                     <input 
-                      type="number" 
-                      value={isNaN(p.price) ? '' : p.price} 
-                      onChange={e => handlePyramidChange(index, 'price', e.target.value)} 
-                      onBlur={e => handlePyramidBlur(index, 'price', e.target.value)}
-                      onWheel={(e) => (e.target as HTMLElement).blur()} 
+                      type="text" 
+                      placeholder="2% or 3650"
+                      value={pyramidSlInputs[index] ?? ''} 
+                      onChange={e => handlePyramidSLChange(index, e.target.value)} 
+                      onBlur={e => handlePyramidSLBlur(index, e.target.value)}
                       className={`w-full border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-[#6A5ACD]/50 focus:border-[#6A5ACD]/50 focus:outline-none transition-all ${
-                        errors[`pyramid_price_${index}`] && touched[`pyramid_price_${index}`] ? 'border-[#DC3545]/50 focus:border-[#DC3545]/50 focus:ring-[#DC3545]/50' : 'border-[rgba(255,255,255,0.1)]'
+                        errors[`pyramid_sl_${index}`] && touched[`pyramid_sl_${index}`] ? 'border-[#DC3545]/50 focus:border-[#DC3545]/50 focus:ring-[#DC3545]/50' : 'border-[rgba(255,255,255,0.1)]'
                       }`}
                     />
-                    <div className="absolute left-0 right-0 mt-1 min-h-[18px]">
-                      {errors[`pyramid_price_${index}`] && touched[`pyramid_price_${index}`] && (
-                        <p className="text-xs text-[#DC3545] font-medium">{errors[`pyramid_price_${index}`]}</p>
+                    <div className="absolute left-0 right-0 mt-1 min-h-[36px]">
+                      {errors[`pyramid_sl_${index}`] && touched[`pyramid_sl_${index}`] && (
+                        <p className="text-xs text-[#DC3545] font-medium">{errors[`pyramid_sl_${index}`]}</p>
+                      )}
+                      {p.slPrice && p.slPrice > 0 && !errors[`pyramid_sl_${index}`] && (
+                        <div className="text-xs text-[#6A5ACD] mt-1">
+                          {(pyramidSlInputs[index] ?? '').trim().endsWith('%') ? (
+                            <p>Absolute: ₹{p.slPrice.toFixed(2)}</p>
+                          ) : (
+                            <p>Percentage: {calculatePercentageFromSL(p.price, p.slPrice).toFixed(2)}%</p>
+                          )}
+                        </div>
                       )}
                     </div>
                 </div>
-                <div className="flex-1 relative">
-                    <label className="block text-sm font-semibold text-[#A0A0A0] mb-2">Quantity</label>
-                    <input 
-                      type="number" 
-                      value={isNaN(p.quantity) ? '' : p.quantity} 
-                      onChange={e => handlePyramidChange(index, 'quantity', e.target.value)} 
-                      onBlur={e => handlePyramidBlur(index, 'quantity', e.target.value)}
-                      onWheel={(e) => (e.target as HTMLElement).blur()} 
-                      className={`w-full border rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-[#6A5ACD]/50 focus:border-[#6A5ACD]/50 focus:outline-none transition-all ${
-                        errors[`pyramid_quantity_${index}`] && touched[`pyramid_quantity_${index}`] ? 'border-[#DC3545]/50 focus:border-[#DC3545]/50 focus:ring-[#DC3545]/50' : 'border-[rgba(255,255,255,0.1)]'
-                      }`}
-                    />
-                    <div className="absolute left-0 right-0 mt-1 min-h-[18px]">
-                      {errors[`pyramid_quantity_${index}`] && touched[`pyramid_quantity_${index}`] && (
-                        <p className="text-xs text-[#DC3545] font-medium">{errors[`pyramid_quantity_${index}`]}</p>
-                      )}
-                    </div>
-                </div>
-                <button type="button" onClick={() => removePyramid(index)} 
-                        className="p-3 mb-0 text-[#DC3545] hover:text-[#e85d75] hover:bg-[#DC3545]/10 rounded-lg transition-all duration-200">
-                  <XIcon />
-                </button>
             </div>
         ))}
         <button type="button" onClick={addPyramid} 
