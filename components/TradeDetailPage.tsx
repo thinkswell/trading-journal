@@ -240,7 +240,7 @@ const TradeDetailPage: React.FC<TradeDetailPageProps> = ({ trade, strategy, onSa
                                     % of capital used
                                 </div>
                             </span>
-                            {` | ${stats.totalBoughtQty} units @ ${formatCurrency(stats.avgEntryPrice, currency)} avg.`}
+                            {` | ${stats.isClosed ? stats.totalBoughtQty : stats.currentHoldingsQty} units @ ${formatCurrency(stats.avgEntryPrice, currency)} avg.`}
                         </span>
                     }
                 />

@@ -66,7 +66,7 @@ const TradeRow: React.FC<{
 }> = ({ trade, strategyName, onEdit, onDelete, onViewDetails, onOpenMoveModal, onOpenCopyModal, onOpenDeleteModal, capital }) => {
     const { currency } = useSettings();
     const stats = getTradeStats(trade);
-    const percentOfCapital = capital && capital > 0 ? (stats.totalInvested / capital) * 100 : 0;
+    const percentOfCapital = capital && capital > 0 ? (stats.isClosed ? (stats.totalInvested / capital) * 100 : (stats.currentValue / capital) * 100) : 0;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [menuPosition, setMenuPosition] = useState<{ top: number; right: number } | null>(null);
     const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -128,7 +128,7 @@ const TradeRow: React.FC<{
             </td>
             {strategyName && <td className="p-4 text-[#A0A0A0] group-hover:text-[#E0E0E0] transition-colors">{strategyName}</td>}
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{formatCurrency(stats.avgEntryPrice, currency)}</td>
-            <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{stats.totalBoughtQty}</td>
+            <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{stats.isClosed ? stats.totalBoughtQty : stats.currentHoldingsQty}</td>
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{stats.isClosed ? (stats.avgExitPrice > 0 ? formatCurrency(stats.avgExitPrice, currency) : 'N/A') : 'N/A'}</td>
             <td className="p-4 text-[#E0E0E0] group-hover:text-white transition-colors">{percentOfCapital > 0 ? `${percentOfCapital.toFixed(2)}%` : 'N/A'}</td>
             <td className="p-4">
@@ -586,8 +586,8 @@ const TradeCard: React.FC<{
               <span className="text-white font-semibold">{formatCurrency(stats.avgEntryPrice, currency)}</span>
             </div>
             <div className="flex flex-col">
-              <span className="text-[#A0A0A0] mb-1">Total Qty:</span>
-              <span className="text-white font-semibold">{stats.totalBoughtQty}</span>
+              <span className="text-[#A0A0A0] mb-1">Quantity:</span>
+              <span className="text-white font-semibold">{stats.isClosed ? stats.totalBoughtQty : stats.currentHoldingsQty}</span>
             </div>
             <div className="flex flex-col">
               <span className="text-[#A0A0A0] mb-1">Avg. Exit:</span>
@@ -822,9 +822,8 @@ const TradeList: React.FC<TradeListProps> = ({ trades, strategyMap, onEdit, onDe
                 Asset
                 <SortIndicator option="asset" />
               </th>
-              {showStrategyColumn && <th className="p-4 font-bold">Strategy</th>}
               <th className="p-4 font-bold">Avg. Entry</th>
-              <th className="p-4 font-bold">Total Qty</th>
+              <th className="p-4 font-bold">Quantity</th>
               <th className="p-4 font-bold">Avg. Exit</th>
               <th 
                 className={`p-4 font-bold ${isSortable ? 'cursor-pointer hover:text-white transition-colors' : ''}`}
