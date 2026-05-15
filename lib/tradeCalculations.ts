@@ -147,3 +147,59 @@ export const getTradeStats = (trade: Trade): TradeStats => {
     realizedRMultiple,
   };
 };
+
+/**
+ * Calculates the current winning streak for a list of trades
+ * Ignores breakeven trades and counts consecutive wins from the most recent trade
+ * @param trades - Array of trades to analyze
+ * @returns Number of consecutive wins from the most recent trade
+ */
+export const calculateCurrentWinStreak = (trades: Trade[]): number => {
+  // Filter closed trades, exclude open and breakeven
+  const closedTrades = trades.filter(t => t.status !== 'open' && t.status !== 'breakeven');
+
+  // Sort by date, most recent first (use closeDate if available, otherwise date)
+  const sorted = closedTrades.sort((a, b) => {
+    const dateA = a.closeDate || a.date;
+    const dateB = b.closeDate || b.date;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
+  });
+
+  let streak = 0;
+  for (const trade of sorted) {
+    if (trade.status === 'win') {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+};
+
+/**
+ * Calculates the current losing streak for a list of trades
+ * Ignores breakeven trades and counts consecutive losses from the most recent trade
+ * @param trades - Array of trades to analyze
+ * @returns Number of consecutive losses from the most recent trade
+ */
+export const calculateCurrentLossStreak = (trades: Trade[]): number => {
+  // Filter closed trades, exclude open and breakeven
+  const closedTrades = trades.filter(t => t.status !== 'open' && t.status !== 'breakeven');
+
+  // Sort by date, most recent first (use closeDate if available, otherwise date)
+  const sorted = closedTrades.sort((a, b) => {
+    const dateA = a.closeDate || a.date;
+    const dateB = b.closeDate || b.date;
+    return new Date(dateB).getTime() - new Date(dateA).getTime();
+  });
+
+  let streak = 0;
+  for (const trade of sorted) {
+    if (trade.status === 'loss') {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
+};

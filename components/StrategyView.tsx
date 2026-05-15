@@ -6,7 +6,7 @@ import ConfirmationModal from './ConfirmationModal';
 import { PlusIcon } from './icons/PlusIcon';
 import { EditIcon } from './icons/EditIcon';
 import StatCard from './StatCard';
-import { getTradeStats } from '../lib/tradeCalculations';
+import { getTradeStats, calculateCurrentWinStreak, calculateCurrentLossStreak } from '../lib/tradeCalculations';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
 import { MoneyIcon } from './icons/MoneyIcon';
@@ -172,7 +172,9 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
       winningTradesCount: winningTrades.length,
       losingTradesCount: losingTrades.length,
       breakevenTradesCount: breakevenTrades.length,
-      percentCapitalInvested
+      percentCapitalInvested,
+      winStreak: calculateCurrentWinStreak(strategy.trades),
+      lossStreak: calculateCurrentLossStreak(strategy.trades)
     };
   }, [strategy]);
 
@@ -380,6 +382,18 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
             <h1 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
               {strategy.name}
             </h1>
+            <div className="flex gap-2">
+              {stats.winStreak > 0 && (
+                <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded-lg text-sm font-medium">
+                  Win Streak: {stats.winStreak}
+                </span>
+              )}
+              {stats.lossStreak > 0 && (
+                <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded-lg text-sm font-medium">
+                  Loss Streak: {stats.lossStreak}
+                </span>
+              )}
+            </div>
             <button 
                 onClick={() => setIsEditStrategyModalOpen(true)} 
                 className="text-[#A0A0A0] hover:text-[#6A5ACD] hover:bg-[#6A5ACD]/10 p-2 rounded-lg transition-all duration-200"
@@ -397,6 +411,26 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
           Add Trade
         </button>
       </div>
+
+      {/* Alerts */}
+      {(stats.winStreak >= 3 || stats.lossStreak >= 4) && (
+        <div className="space-y-2">
+          {stats.winStreak >= 3 && (
+            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+              <p className="text-green-400 font-medium">
+                Consider upsizing after {stats.winStreak}-trade win streak
+              </p>
+            </div>
+          )}
+          {stats.lossStreak >= 4 && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+              <p className="text-red-400 font-medium">
+                Consider downsizing after {stats.lossStreak}-trade loss streak
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Desktop: Show all stats in grid */}
       <div className="hidden md:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
