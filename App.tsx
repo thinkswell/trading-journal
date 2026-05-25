@@ -1,6 +1,13 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Strategy, Trade } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
+import { mergeStrategies } from './lib/firebaseSyncUtils';
+import {
+  removeUndefinedValues,
+  writeStrategiesWithRetry,
+  SYNC_FAILURE_MESSAGE,
+} from './lib/firestoreSync';
+import SyncSnackbar from './components/SyncSnackbar';
 import Sidebar from './components/Sidebar';
 import BottomNav from './components/BottomNav';
 import Footer from './components/Footer';
@@ -20,28 +27,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import TradeForm from './components/TradeForm';
 import { SettingsProvider } from './contexts/SettingsContext';
 
-// Helper function to remove undefined values from objects/arrays for Firestore compatibility
-const removeUndefinedValues = (obj: any): any => {
-  if (obj === null || obj === undefined) {
-    return null;
-  }
-  
-  if (Array.isArray(obj)) {
-    return obj.map(removeUndefinedValues);
-  }
-  
-  if (typeof obj === 'object') {
-    const cleaned: any = {};
-    for (const key in obj) {
-      if (obj[key] !== undefined) {
-        cleaned[key] = removeUndefinedValues(obj[key]);
-      }
-    }
-    return cleaned;
-  }
-  
-  return obj;
-};
+const LOCAL_STRATEGIES_KEY = 'trading-journal-strategies';
 
 const initialStrategies: Strategy[] = [
     {
@@ -62,6 +48,16 @@ const initialStrategies: Strategy[] = [
         ]
     }
 ];
+
+const getLocalStrategies = (): Strategy[] => {
+  try {
+    const item = window.localStorage.getItem(LOCAL_STRATEGIES_KEY);
+    return item ? JSON.parse(item) : initialStrategies;
+  } catch (error) {
+    console.error('Failed to read strategies from localStorage:', error);
+    return initialStrategies;
+  }
+};
 
 // URL routing helper functions
 // Convert strategy name to URL-friendly slug
@@ -222,7 +218,7 @@ const getPathFromView = (view: string, strategies: Strategy[]): string => {
 };
 
 const AppContent: React.FC = () => {
-  const [strategies, setStrategies] = useLocalStorage<Strategy[]>('trading-journal-strategies', initialStrategies);
+  const [strategies, setStrategies] = useLocalStorage<Strategy[]>(LOCAL_STRATEGIES_KEY, initialStrategies);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [activeView, setActiveView] = useState<string>('dashboard');
@@ -240,6 +236,18 @@ const AppContent: React.FC = () => {
   const [editingTrade, setEditingTrade] = useState<Trade | null>(null);
   const hasInitializedFromUrl = useRef(false);
 
+  const [syncFailed, setSyncFailed] = useState(false);
+  const [syncErrorMessage, setSyncErrorMessage] = useState(SYNC_FAILURE_MESSAGE);
+  const [pendingSync, setPendingSync] = useState<Strategy[] | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
+  const pendingFirestoreDuringLoadRef = useRef<Strategy[] | null>(null);
+  const loadingRef = useRef(loading);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
   const navigateTo = (view: string) => {
     setPreviousView(activeView);
     setActiveView(view);
@@ -249,6 +257,60 @@ const AppContent: React.FC = () => {
   };
 
 
+  const reportSyncFailure = useCallback((strategiesToSync: Strategy[], error?: unknown) => {
+    setPendingSync(strategiesToSync);
+    setSyncFailed(true);
+    setSyncSuccess(false);
+    const detail =
+      error instanceof Error ? error.message : error ? String(error) : undefined;
+    setSyncErrorMessage(
+      detail ? `${SYNC_FAILURE_MESSAGE} (${detail})` : SYNC_FAILURE_MESSAGE
+    );
+    console.error('Firestore sync failed:', error);
+  }, []);
+
+  const clearSyncFailure = useCallback(() => {
+    setSyncFailed(false);
+    setPendingSync(null);
+    setSyncErrorMessage(SYNC_FAILURE_MESSAGE);
+  }, []);
+
+  const syncStrategiesToCloud = useCallback(
+    async (strategiesToSync: Strategy[]): Promise<boolean> => {
+      const user = auth.currentUser;
+      if (!user) {
+        console.log('User not authenticated, saving to localStorage only');
+        return false;
+      }
+
+      const result = await writeStrategiesWithRetry(strategiesToSync, user.uid);
+      if (result.success) {
+        clearSyncFailure();
+        return true;
+      }
+
+      reportSyncFailure(strategiesToSync, result.error);
+      return false;
+    },
+    [clearSyncFailure, reportSyncFailure]
+  );
+
+  const handleRetrySync = useCallback(async () => {
+    if (!pendingSync || !auth.currentUser) return;
+
+    setIsRetrying(true);
+    const result = await writeStrategiesWithRetry(pendingSync, auth.currentUser.uid);
+    setIsRetrying(false);
+
+    if (result.success) {
+      clearSyncFailure();
+      setSyncSuccess(true);
+      window.setTimeout(() => setSyncSuccess(false), 3000);
+    } else {
+      reportSyncFailure(pendingSync, result.error);
+    }
+  }, [pendingSync, clearSyncFailure, reportSyncFailure]);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async user => {
       setLoading(true);
@@ -256,29 +318,52 @@ const AppContent: React.FC = () => {
         setCurrentUser(user);
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
+        const local = getLocalStrategies();
+
         if (userDoc.exists()) {
           const data = userDoc.data();
-          if(data.strategies) setStrategies(data.strategies);
-          if(data.firstName) setFirstName(data.firstName);
-          if(data.lastName) setLastName(data.lastName);
+          const remote: Strategy[] = data.strategies ?? [];
+          const merged = mergeStrategies(local, remote);
+          setStrategies(merged);
+          if (data.firstName) setFirstName(data.firstName);
+          if (data.lastName) setLastName(data.lastName);
 
+          const syncResult = await writeStrategiesWithRetry(merged, user.uid);
+          if (!syncResult.success) {
+            reportSyncFailure(merged, syncResult.error);
+          } else {
+            clearSyncFailure();
+          }
         } else {
-          // New user, sync local data to firestore
-          // Remove undefined values before saving to Firestore
-          const cleanedStrategies = removeUndefinedValues(strategies);
-          await setDoc(userDocRef, { strategies: cleanedStrategies, firstName: '', lastName: '' });
+          const cleanedStrategies = removeUndefinedValues(local) as Strategy[];
+          setStrategies(local);
+          const syncResult = await writeStrategiesWithRetry(cleanedStrategies, user.uid);
+          if (!syncResult.success) {
+            reportSyncFailure(local, syncResult.error);
+          } else {
+            await setDoc(userDocRef, { firstName: '', lastName: '' }, { merge: true });
+            clearSyncFailure();
+          }
         }
       } else {
         setCurrentUser(null);
-        const localData = window.localStorage.getItem('trading-journal-strategies');
-        setStrategies(localData ? JSON.parse(localData) : initialStrategies);
+        setStrategies(getLocalStrategies());
         setFirstName('');
         setLastName('');
+        clearSyncFailure();
       }
       setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [clearSyncFailure, reportSyncFailure]);
+
+  useEffect(() => {
+    if (loading || !pendingFirestoreDuringLoadRef.current) return;
+
+    const queued = pendingFirestoreDuringLoadRef.current;
+    pendingFirestoreDuringLoadRef.current = null;
+    void syncStrategiesToCloud(queued);
+  }, [loading, syncStrategiesToCloud]);
 
   // Initialize view from URL after strategies are loaded (only once)
   useEffect(() => {
@@ -403,33 +488,14 @@ const AppContent: React.FC = () => {
   }, [strategies, loading]);
 
   const saveStrategies = async (newStrategies: Strategy[]) => {
-    // Always update localStorage first
     setStrategies(newStrategies);
-    
-    // Check if user is authenticated before attempting Firestore save
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
-      console.log('User not authenticated, saving to localStorage only');
+
+    if (loadingRef.current) {
+      pendingFirestoreDuringLoadRef.current = newStrategies;
       return;
     }
 
-    try {
-      console.log('Attempting to save strategies to Firestore for user:', currentUser.uid);
-      // Remove undefined values before saving to Firestore (Firestore doesn't accept undefined)
-      const cleanedStrategies = removeUndefinedValues(newStrategies);
-      const userDocRef = doc(db, 'users', currentUser.uid);
-      await setDoc(userDocRef, { strategies: cleanedStrategies }, { merge: true });
-      console.log('Successfully saved strategies to Firestore');
-    } catch (error) {
-      console.error('Error saving strategies to Firestore:', error);
-      console.error('Error details:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        code: (error as any)?.code,
-        strategiesCount: newStrategies.length,
-        tradesCount: newStrategies.reduce((sum, s) => sum + s.trades.length, 0)
-      });
-      // Note: localStorage was already updated, so data is not lost
-    }
+    await syncStrategiesToCloud(newStrategies);
   };
 
   const handleUpdateProfile = async (newFirstName: string, newLastName: string) => {
@@ -740,6 +806,14 @@ const AppContent: React.FC = () => {
       )}
 
       <Footer />
+
+      <SyncSnackbar
+        visible={syncFailed}
+        message={syncErrorMessage}
+        isRetrying={isRetrying}
+        showSuccess={syncSuccess}
+        onRetry={handleRetrySync}
+      />
     </div>
   );
 };

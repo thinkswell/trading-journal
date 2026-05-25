@@ -99,9 +99,11 @@ App
 ### 5. **Data Management**
 
 #### State Management Pattern:
-1. **Local Storage First**: All data stored in `localStorage` immediately
-2. **Firebase Sync**: If authenticated, syncs to Firestore
-3. **Fallback**: If not authenticated, works entirely offline
+1. **Local Storage First**: All data stored in `localStorage` immediately on every change
+2. **Firebase Sync**: If authenticated, each change is written to Firestore with automatic retries
+3. **Sync failure UI**: Persistent `SyncSnackbar` with Retry if cloud write fails (no auto-dismiss until retry succeeds)
+4. **Session restore**: On app load, local and Firestore data are merged (union by ID; local wins on conflicts), then pushed to cloud
+5. **Fallback**: If not authenticated, works entirely offline
 
 #### Data Structure:
 ```typescript
@@ -136,7 +138,9 @@ Trade = {
 #### Firebase Integration:
 - **Collection**: `users/{userId}`
 - **Document fields**: `strategies`, `firstName`, `lastName`
-- **Sync strategy**: Merge updates, preserve local data on conflict
+- **Per-change sync**: `saveStrategies` updates localStorage then `setDoc` (with retries via `lib/firestoreSync.ts`)
+- **On load**: `mergeStrategies` in `lib/firebaseSyncUtils.ts` reconciles localStorage with Firestore, then uploads merged snapshot
+- **On failure**: `components/SyncSnackbar.tsx` shows a persistent error with Retry until cloud sync succeeds
 
 ### 6. **Styling Architecture**
 
