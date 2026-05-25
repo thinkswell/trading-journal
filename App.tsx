@@ -6,6 +6,10 @@ import {
   removeUndefinedValues,
   writeStrategiesWithRetry,
   SYNC_FAILURE_MESSAGE,
+  getSyncStats,
+  logSync,
+  logSyncWarn,
+  logSyncError,
 } from './lib/firestoreSync';
 import SyncSnackbar from './components/SyncSnackbar';
 import Sidebar from './components/Sidebar';
@@ -257,7 +261,7 @@ const AppContent: React.FC = () => {
   };
 
 
-  const reportSyncFailure = useCallback((strategiesToSync: Strategy[], error?: unknown) => {
+  const reportSyncFailure = useCallback((strategiesToSync: Strategy[], error?: unknown, context = 'save') => {
     setPendingSync(strategiesToSync);
     setSyncFailed(true);
     setSyncSuccess(false);
@@ -266,93 +270,128 @@ const AppContent: React.FC = () => {
     setSyncErrorMessage(
       detail ? `${SYNC_FAILURE_MESSAGE} (${detail})` : SYNC_FAILURE_MESSAGE
     );
-    console.error('Firestore sync failed:', error);
+    logSyncError('Sync failure surfaced to user (snackbar shown)', error, {
+      context,
+      ...getSyncStats(strategiesToSync),
+    });
   }, []);
 
-  const clearSyncFailure = useCallback(() => {
+  const clearSyncFailure = useCallback((context = 'save') => {
     setSyncFailed(false);
     setPendingSync(null);
     setSyncErrorMessage(SYNC_FAILURE_MESSAGE);
+    logSync('Sync failure state cleared', { context });
   }, []);
 
   const syncStrategiesToCloud = useCallback(
-    async (strategiesToSync: Strategy[]): Promise<boolean> => {
+    async (strategiesToSync: Strategy[], context = 'save'): Promise<boolean> => {
       const user = auth.currentUser;
       if (!user) {
-        console.log('User not authenticated, saving to localStorage only');
+        logSyncWarn('Skipping Firestore sync — user not authenticated (localStorage only)', {
+          context,
+          ...getSyncStats(strategiesToSync),
+        });
         return false;
       }
 
-      const result = await writeStrategiesWithRetry(strategiesToSync, user.uid);
+      logSync('Starting cloud sync', { context, userId: user.uid, ...getSyncStats(strategiesToSync) });
+      const result = await writeStrategiesWithRetry(strategiesToSync, user.uid, context);
       if (result.success) {
-        clearSyncFailure();
+        clearSyncFailure(context);
+        logSync('Cloud sync completed successfully', { context, userId: user.uid });
         return true;
       }
 
-      reportSyncFailure(strategiesToSync, result.error);
+      reportSyncFailure(strategiesToSync, result.error, context);
       return false;
     },
     [clearSyncFailure, reportSyncFailure]
   );
 
   const handleRetrySync = useCallback(async () => {
-    if (!pendingSync || !auth.currentUser) return;
+    if (!pendingSync || !auth.currentUser) {
+      logSyncWarn('Manual retry aborted', {
+        hasPendingSync: Boolean(pendingSync),
+        isAuthenticated: Boolean(auth.currentUser),
+      });
+      return;
+    }
 
+    logSync('User initiated manual sync retry', {
+      userId: auth.currentUser.uid,
+      ...getSyncStats(pendingSync),
+    });
     setIsRetrying(true);
-    const result = await writeStrategiesWithRetry(pendingSync, auth.currentUser.uid);
+    const result = await writeStrategiesWithRetry(pendingSync, auth.currentUser.uid, 'manual-retry');
     setIsRetrying(false);
 
     if (result.success) {
-      clearSyncFailure();
+      clearSyncFailure('manual-retry');
       setSyncSuccess(true);
+      logSync('Manual retry succeeded — hiding failure snackbar');
       window.setTimeout(() => setSyncSuccess(false), 3000);
     } else {
-      reportSyncFailure(pendingSync, result.error);
+      reportSyncFailure(pendingSync, result.error, 'manual-retry');
     }
   }, [pendingSync, clearSyncFailure, reportSyncFailure]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async user => {
+      logSync('Auth state changed — starting session data load');
       setLoading(true);
       if (user) {
         setCurrentUser(user);
+        logSync('User session active', { userId: user.uid });
         const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
         const local = getLocalStrategies();
+        logSync('Loaded local strategies from localStorage', getSyncStats(local));
 
         if (userDoc.exists()) {
           const data = userDoc.data();
           const remote: Strategy[] = data.strategies ?? [];
+          logSync('Loaded remote strategies from Firestore', getSyncStats(remote));
           const merged = mergeStrategies(local, remote);
+          logSync('Merged local and remote strategies', {
+            ...getSyncStats(merged),
+            localOnlyStrategies: local.filter(s => !remote.some(r => r.id === s.id)).length,
+            remoteOnlyStrategies: remote.filter(r => !local.some(s => s.id === r.id)).length,
+          });
           setStrategies(merged);
           if (data.firstName) setFirstName(data.firstName);
           if (data.lastName) setLastName(data.lastName);
 
-          const syncResult = await writeStrategiesWithRetry(merged, user.uid);
+          const syncResult = await writeStrategiesWithRetry(merged, user.uid, 'session-restore');
           if (!syncResult.success) {
-            reportSyncFailure(merged, syncResult.error);
+            reportSyncFailure(merged, syncResult.error, 'session-restore');
           } else {
-            clearSyncFailure();
+            clearSyncFailure('session-restore');
+            logSync('Session restore complete — local and cloud are in sync');
           }
         } else {
+          logSync('New Firestore user — uploading local strategies', getSyncStats(local));
           const cleanedStrategies = removeUndefinedValues(local) as Strategy[];
           setStrategies(local);
-          const syncResult = await writeStrategiesWithRetry(cleanedStrategies, user.uid);
+          const syncResult = await writeStrategiesWithRetry(cleanedStrategies, user.uid, 'new-user');
           if (!syncResult.success) {
-            reportSyncFailure(local, syncResult.error);
+            reportSyncFailure(local, syncResult.error, 'new-user');
           } else {
+            logSync('Writing default profile fields for new user');
             await setDoc(userDocRef, { firstName: '', lastName: '' }, { merge: true });
-            clearSyncFailure();
+            clearSyncFailure('new-user');
+            logSync('New user initial sync complete');
           }
         }
       } else {
+        logSync('User signed out — loading strategies from localStorage only');
         setCurrentUser(null);
         setStrategies(getLocalStrategies());
         setFirstName('');
         setLastName('');
-        clearSyncFailure();
+        clearSyncFailure('logout');
       }
       setLoading(false);
+      logSync('Auth session load finished — app ready');
     });
     return () => unsubscribe();
   }, [clearSyncFailure, reportSyncFailure]);
@@ -362,7 +401,8 @@ const AppContent: React.FC = () => {
 
     const queued = pendingFirestoreDuringLoadRef.current;
     pendingFirestoreDuringLoadRef.current = null;
-    void syncStrategiesToCloud(queued);
+    logSync('Flushing Firestore sync queued during auth loading', getSyncStats(queued));
+    void syncStrategiesToCloud(queued, 'queued-during-auth');
   }, [loading, syncStrategiesToCloud]);
 
   // Initialize view from URL after strategies are loaded (only once)
@@ -488,14 +528,16 @@ const AppContent: React.FC = () => {
   }, [strategies, loading]);
 
   const saveStrategies = async (newStrategies: Strategy[]) => {
+    logSync('Saving strategies — updating localStorage', getSyncStats(newStrategies));
     setStrategies(newStrategies);
 
     if (loadingRef.current) {
       pendingFirestoreDuringLoadRef.current = newStrategies;
+      logSyncWarn('Auth still loading — Firestore sync queued', getSyncStats(newStrategies));
       return;
     }
 
-    await syncStrategiesToCloud(newStrategies);
+    await syncStrategiesToCloud(newStrategies, 'user-change');
   };
 
   const handleUpdateProfile = async (newFirstName: string, newLastName: string) => {

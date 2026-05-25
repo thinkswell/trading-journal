@@ -2,8 +2,34 @@ import { doc, setDoc } from 'firebase/firestore';
 import { Strategy } from '../types';
 import { db } from '../firebase';
 
+const SYNC_LOG_PREFIX = '[Sync]';
 const FIRESTORE_RETRY_ATTEMPTS = 3;
 const FIRESTORE_RETRY_DELAY_MS = 500;
+
+export const getSyncStats = (strategies: Strategy[]) => ({
+  strategyCount: strategies.length,
+  tradeCount: strategies.reduce((sum, s) => sum + s.trades.length, 0),
+});
+
+export const logSync = (message: string, details?: Record<string, unknown>) => {
+  if (details) {
+    console.log(`${SYNC_LOG_PREFIX} ${message}`, details);
+  } else {
+    console.log(`${SYNC_LOG_PREFIX} ${message}`);
+  }
+};
+
+export const logSyncWarn = (message: string, details?: Record<string, unknown>) => {
+  if (details) {
+    console.warn(`${SYNC_LOG_PREFIX} ${message}`, details);
+  } else {
+    console.warn(`${SYNC_LOG_PREFIX} ${message}`);
+  }
+};
+
+export const logSyncError = (message: string, error?: unknown, details?: Record<string, unknown>) => {
+  console.error(`${SYNC_LOG_PREFIX} ${message}`, { ...details, error });
+};
 
 export const removeUndefinedValues = (obj: unknown): unknown => {
   if (obj === null || obj === undefined) {
@@ -32,31 +58,71 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export const writeStrategiesToFirestore = async (
   strategies: Strategy[],
-  userId: string
+  userId: string,
+  context: string
 ): Promise<void> => {
+  const stats = getSyncStats(strategies);
+  logSync('Writing strategies to Firestore', { context, userId, ...stats });
   const cleanedStrategies = removeUndefinedValues(strategies) as Strategy[];
   const userDocRef = doc(db, 'users', userId);
   await setDoc(userDocRef, { strategies: cleanedStrategies }, { merge: true });
+  logSync('Firestore write completed', { context, userId, ...stats });
 };
 
 export const writeStrategiesWithRetry = async (
   strategies: Strategy[],
-  userId: string
+  userId: string,
+  context = 'save'
 ): Promise<{ success: boolean; error?: unknown }> => {
+  const stats = getSyncStats(strategies);
+  logSync('Attempting data sync to Firestore', { context, userId, ...stats });
+
   let lastError: unknown;
 
   for (let attempt = 0; attempt < FIRESTORE_RETRY_ATTEMPTS; attempt++) {
+    const attemptNumber = attempt + 1;
     try {
-      await writeStrategiesToFirestore(strategies, userId);
+      if (attempt > 0) {
+        logSync('Retrying Firestore sync', {
+          context,
+          userId,
+          attempt: attemptNumber,
+          maxAttempts: FIRESTORE_RETRY_ATTEMPTS,
+          ...stats,
+        });
+      }
+      await writeStrategiesToFirestore(strategies, userId, context);
+      logSync('Firestore sync succeeded', {
+        context,
+        userId,
+        attempt: attemptNumber,
+        ...stats,
+      });
       return { success: true };
     } catch (error) {
       lastError = error;
+      logSyncWarn('Firestore sync attempt failed', {
+        context,
+        userId,
+        attempt: attemptNumber,
+        maxAttempts: FIRESTORE_RETRY_ATTEMPTS,
+        error: error instanceof Error ? error.message : error,
+        ...stats,
+      });
       if (attempt < FIRESTORE_RETRY_ATTEMPTS - 1) {
-        await delay(FIRESTORE_RETRY_DELAY_MS * (attempt + 1));
+        const waitMs = FIRESTORE_RETRY_DELAY_MS * (attempt + 1);
+        logSync('Scheduling sync retry after delay', { context, waitMs, nextAttempt: attemptNumber + 1 });
+        await delay(waitMs);
       }
     }
   }
 
+  logSyncError('Firestore sync failed after all retries', lastError, {
+    context,
+    userId,
+    attempts: FIRESTORE_RETRY_ATTEMPTS,
+    ...stats,
+  });
   return { success: false, error: lastError };
 };
 
