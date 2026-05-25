@@ -376,16 +376,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave, onCont
             selectedImage.style.width = `${newWidth}px`;
             selectedImage.style.height = `${newHeight}px`;
             selectedImage.style.maxWidth = 'none';
-            
+
             // Update handle position
             const rect = getImageRect(selectedImage);
             if (rect) {
                 setHandlePosition(rect);
-            }
-            
-            // Trigger content change
-            if (editorRef.current && onContentChange) {
-                onContentChange(editorRef.current.innerHTML);
             }
         };
 
@@ -393,6 +388,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({ content, onSave, onCont
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
             resizeStateRef.current = null;
+
+            // Trigger content change only after resize is complete
+            if (editorRef.current && onContentChange) {
+                onContentChange(editorRef.current.innerHTML);
+            }
         };
 
         document.addEventListener('mousemove', handleMouseMove);

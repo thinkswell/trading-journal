@@ -44,3 +44,12 @@ export interface Strategy {
   initialCapital: number;
   trades: Trade[];
 }
+
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}

@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { Strategy, Trade } from './types';
+import { Strategy, Trade, Note } from './types';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { mergeStrategies } from './lib/firebaseSyncUtils';
+import { mergeStrategies, mergeNotes } from './lib/firebaseSyncUtils';
 import {
   removeUndefinedValues,
   writeStrategiesWithRetry,
+  writeNotesWithRetry,
   SYNC_FAILURE_MESSAGE,
   getSyncStats,
   logSync,
@@ -30,8 +31,10 @@ import { onAuthStateChanged, User, signOut } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import TradeForm from './components/TradeForm';
 import { SettingsProvider } from './contexts/SettingsContext';
+import NotesPage from './components/NotesPage';
 
 const LOCAL_STRATEGIES_KEY = 'trading-journal-strategies';
+const LOCAL_NOTES_KEY = 'trading-journal-notes';
 
 const initialStrategies: Strategy[] = [
     {
@@ -60,6 +63,16 @@ const getLocalStrategies = (): Strategy[] => {
   } catch (error) {
     console.error('Failed to read strategies from localStorage:', error);
     return initialStrategies;
+  }
+};
+
+const getLocalNotes = (): Note[] => {
+  try {
+    const item = window.localStorage.getItem(LOCAL_NOTES_KEY);
+    return item ? JSON.parse(item) : [];
+  } catch (error) {
+    console.error('Failed to read notes from localStorage:', error);
+    return [];
   }
 };
 
@@ -137,7 +150,11 @@ const getViewFromPath = (pathname: string, strategies: Strategy[]): string => {
   if (path === 'tools') {
     return 'tools';
   }
-  
+
+  if (path === 'notes') {
+    return 'notes';
+  }
+
   // Check for tools route: /tools/:tool-slug
   const toolsMatch = path.match(/^tools\/(.+)$/);
   if (toolsMatch) {
@@ -202,7 +219,11 @@ const getPathFromView = (view: string, strategies: Strategy[]): string => {
   if (view === 'tools/quantity-calculator') {
     return '/tools/quantity-calculator';
   }
-  
+
+  if (view === 'notes') {
+    return '/notes';
+  }
+
   // Check if it's a trade view
   if (view.startsWith('trade/')) {
     const tradeId = view.split('/')[1];
@@ -223,6 +244,7 @@ const getPathFromView = (view: string, strategies: Strategy[]): string => {
 
 const AppContent: React.FC = () => {
   const [strategies, setStrategies] = useLocalStorage<Strategy[]>(LOCAL_STRATEGIES_KEY, initialStrategies);
+  const [notes, setNotes] = useLocalStorage<Note[]>(LOCAL_NOTES_KEY, []);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [activeView, setActiveView] = useState<string>('dashboard');
@@ -246,6 +268,7 @@ const AppContent: React.FC = () => {
   const [isRetrying, setIsRetrying] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const pendingFirestoreDuringLoadRef = useRef<Strategy[] | null>(null);
+  const pendingFirestoreDuringLoadNotesRef = useRef<Note[] | null>(null);
   const loadingRef = useRef(loading);
 
   useEffect(() => {
@@ -382,10 +405,24 @@ const AppContent: React.FC = () => {
             logSync('New user initial sync complete');
           }
         }
+
+        const localNotes = getLocalNotes();
+        logSync('Loaded local notes from localStorage', { noteCount: localNotes.length });
+        const remoteNotes: Note[] = userDoc.exists() ? (userDoc.data().notes ?? []) : [];
+        logSync('Loaded remote notes from Firestore', { noteCount: remoteNotes.length });
+        const mergedNotes = mergeNotes(localNotes, remoteNotes);
+        logSync('Merged local and remote notes', {
+          noteCount: mergedNotes.length,
+          localOnlyNotes: localNotes.filter(n => !remoteNotes.some(r => r.id === n.id)).length,
+          remoteOnlyNotes: remoteNotes.filter(r => !localNotes.some(l => l.id === r.id)).length,
+        });
+        setNotes(mergedNotes);
+        await syncNotesToCloud(mergedNotes, 'session-restore');
       } else {
-        logSync('User signed out — loading strategies from localStorage only');
+        logSync('User signed out — loading strategies and notes from localStorage only');
         setCurrentUser(null);
         setStrategies(getLocalStrategies());
+        setNotes(getLocalNotes());
         setFirstName('');
         setLastName('');
         clearSyncFailure('logout');
@@ -404,6 +441,15 @@ const AppContent: React.FC = () => {
     logSync('Flushing Firestore sync queued during auth loading', getSyncStats(queued));
     void syncStrategiesToCloud(queued, 'queued-during-auth');
   }, [loading, syncStrategiesToCloud]);
+
+  useEffect(() => {
+    if (loading || !pendingFirestoreDuringLoadNotesRef.current) return;
+
+    const queued = pendingFirestoreDuringLoadNotesRef.current;
+    pendingFirestoreDuringLoadNotesRef.current = null;
+    logSync('Flushing notes Firestore sync queued during auth loading', { noteCount: queued?.length });
+    void syncNotesToCloud(queued, 'queued-during-auth');
+  }, [loading]);
 
   // Initialize view from URL after strategies are loaded (only once)
   useEffect(() => {
@@ -471,7 +517,7 @@ const AppContent: React.FC = () => {
   // Update URL when strategies change (in case current strategy/trade was deleted)
   useEffect(() => {
     // Check if current view is still valid
-    if (activeView === 'dashboard' || activeView === 'profile' || activeView === 'tools' || activeView.startsWith('tools/')) {
+    if (activeView === 'dashboard' || activeView === 'profile' || activeView === 'tools' || activeView === 'notes' || activeView.startsWith('tools/')) {
       return; // These are always valid
     }
 
@@ -538,6 +584,70 @@ const AppContent: React.FC = () => {
     }
 
     await syncStrategiesToCloud(newStrategies, 'user-change');
+  };
+
+  const syncNotesToCloud = useCallback(
+    async (notesToSync: Note[], context = 'save'): Promise<boolean> => {
+      const user = auth.currentUser;
+      if (!user) {
+        logSyncWarn('Skipping notes Firestore sync — user not authenticated (localStorage only)', {
+          context,
+          noteCount: notesToSync.length,
+        });
+        return false;
+      }
+
+      logSync('Starting notes cloud sync', { context, userId: user.uid, noteCount: notesToSync.length });
+      const result = await writeNotesWithRetry(notesToSync, user.uid, context);
+      if (result.success) {
+        logSync('Notes cloud sync completed successfully', { context, userId: user.uid });
+        return true;
+      }
+
+      logSyncError('Notes cloud sync failed', result.error, {
+        context,
+        userId: user.uid,
+        noteCount: notesToSync.length,
+      });
+      return false;
+    },
+    []
+  );
+
+  const saveNotes = async (newNotes: Note[]) => {
+    logSync('Saving notes — updating localStorage', { noteCount: newNotes.length });
+    setNotes(newNotes);
+
+    if (loadingRef.current) {
+      pendingFirestoreDuringLoadNotesRef.current = newNotes;
+      logSyncWarn('Auth still loading — notes Firestore sync queued', { noteCount: newNotes.length });
+      return;
+    }
+
+    await syncNotesToCloud(newNotes, 'user-change');
+  };
+
+  const handleCreateNote = () => {
+    const newNote: Note = {
+      id: `note-${Date.now()}`,
+      title: '',
+      content: '',
+      tags: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    saveNotes([...notes, newNote]);
+    return newNote.id;
+  };
+
+  const handleSaveNote = (noteToSave: Note) => {
+    const updatedNote = { ...noteToSave, updatedAt: new Date().toISOString() };
+    const newNotes = notes.map(n => n.id === updatedNote.id ? updatedNote : n);
+    saveNotes(newNotes);
+  };
+
+  const handleDeleteNote = (noteId: string) => {
+    saveNotes(notes.filter(n => n.id !== noteId));
   };
 
   const handleUpdateProfile = async (newFirstName: string, newLastName: string) => {
@@ -677,6 +787,15 @@ const AppContent: React.FC = () => {
 
     if (activeView === 'tools/quantity-calculator') {
         return <QuantityCalculator />;
+    }
+
+    if (activeView === 'notes') {
+        return <NotesPage
+                    notes={notes}
+                    onSaveNote={handleSaveNote}
+                    onDeleteNote={handleDeleteNote}
+                    onCreateNote={handleCreateNote}
+                />;
     }
 
     const isTradeView = activeView.startsWith('trade/');

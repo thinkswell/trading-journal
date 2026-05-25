@@ -1,4 +1,4 @@
-import { Strategy, Trade } from '../types';
+import { Strategy, Trade, Note } from '../types';
 
 /**
  * Compares local and remote strategies to determine if remote has new data
@@ -89,5 +89,24 @@ export const mergeStrategies = (local: Strategy[], remote: Strategy[]): Strategy
   }
 
   return mergedStrategies;
+};
+
+/**
+ * Intelligently merges remote notes with local notes
+ * - Adds new notes from remote that don't exist locally
+ * - Keeps local version for existing notes (preserves edits)
+ * - Keeps local-only notes
+ */
+export const mergeNotes = (local: Note[], remote: Note[]): Note[] => {
+  const localNoteIds = new Set(local.map(n => n.id));
+  const mergedNotes: Note[] = [...local];
+
+  for (const remoteNote of remote) {
+    if (!localNoteIds.has(remoteNote.id)) {
+      mergedNotes.push(remoteNote);
+    }
+  }
+
+  return mergedNotes;
 };
 

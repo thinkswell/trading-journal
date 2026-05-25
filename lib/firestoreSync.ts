@@ -1,5 +1,5 @@
 import { doc, setDoc } from 'firebase/firestore';
-import { Strategy } from '../types';
+import { Strategy, Note } from '../types';
 import { db } from '../firebase';
 
 const SYNC_LOG_PREFIX = '[Sync]';
@@ -128,3 +128,71 @@ export const writeStrategiesWithRetry = async (
 
 export const SYNC_FAILURE_MESSAGE =
   "Couldn't sync to cloud. Your changes are saved on this device only.";
+
+export const writeNotesToFirestore = async (
+  notes: Note[],
+  userId: string,
+  context: string
+): Promise<void> => {
+  logSync('Writing notes to Firestore', { context, userId, noteCount: notes.length });
+  const cleanedNotes = removeUndefinedValues(notes) as Note[];
+  const userDocRef = doc(db, 'users', userId);
+  await setDoc(userDocRef, { notes: cleanedNotes }, { merge: true });
+  logSync('Notes Firestore write completed', { context, userId, noteCount: cleanedNotes.length });
+};
+
+export const writeNotesWithRetry = async (
+  notes: Note[],
+  userId: string,
+  context = 'save'
+): Promise<{ success: boolean; error?: unknown }> => {
+  logSync('Attempting notes sync to Firestore', { context, userId, noteCount: notes.length });
+
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < FIRESTORE_RETRY_ATTEMPTS; attempt++) {
+    const attemptNumber = attempt + 1;
+    try {
+      if (attempt > 0) {
+        logSync('Retrying notes Firestore sync', {
+          context,
+          userId,
+          attempt: attemptNumber,
+          maxAttempts: FIRESTORE_RETRY_ATTEMPTS,
+          noteCount: notes.length,
+        });
+      }
+      await writeNotesToFirestore(notes, userId, context);
+      logSync('Notes Firestore sync succeeded', {
+        context,
+        userId,
+        attempt: attemptNumber,
+        noteCount: notes.length,
+      });
+      return { success: true };
+    } catch (error) {
+      lastError = error;
+      logSyncWarn('Notes Firestore sync attempt failed', {
+        context,
+        userId,
+        attempt: attemptNumber,
+        maxAttempts: FIRESTORE_RETRY_ATTEMPTS,
+        error: error instanceof Error ? error.message : error,
+        noteCount: notes.length,
+      });
+      if (attempt < FIRESTORE_RETRY_ATTEMPTS - 1) {
+        const waitMs = FIRESTORE_RETRY_DELAY_MS * (attempt + 1);
+        logSync('Scheduling notes sync retry after delay', { context, waitMs, nextAttempt: attemptNumber + 1 });
+        await delay(waitMs);
+      }
+    }
+  }
+
+  logSyncError('Notes Firestore sync failed after all retries', lastError, {
+    context,
+    userId,
+    attempts: FIRESTORE_RETRY_ATTEMPTS,
+    noteCount: notes.length,
+  });
+  return { success: false, error: lastError };
+};
