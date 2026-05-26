@@ -6,7 +6,8 @@ import ConfirmationModal from './ConfirmationModal';
 import { PlusIcon } from './icons/PlusIcon';
 import { EditIcon } from './icons/EditIcon';
 import StatCard from './StatCard';
-import { getTradeStats, calculateCurrentWinStreak, calculateCurrentLossStreak } from '../lib/tradeCalculations';
+import { getTradeStats } from '../lib/tradeCalculations';
+import { calculatePortfolioStats } from '../lib/portfolioStats';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
 import { MoneyIcon } from './icons/MoneyIcon';
@@ -74,109 +75,15 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
     setIsEditStrategyModalOpen(false);
   };
   
-  const stats = useMemo(() => {
-    let totalPL = 0;
-    let amountInvested = 0;
-    let totalRisk = 0;
-    const closedTrades: Trade[] = [];
-
-    strategy.trades.forEach(trade => {
-        const tradeStats = getTradeStats(trade);
-        if (tradeStats.isClosed) {
-            closedTrades.push(trade);
-            totalPL += tradeStats.realizedPL;
-        } else {
-            amountInvested += tradeStats.currentValue;
-            // Only add risk if it's actual risk (positive value)
-            // If trade is profitable (negative risk), treat as 0 risk
-            totalRisk += Math.max(0, tradeStats.totalRiskValue);
-        }
-    });
-
-    const currentCapital = strategy.initialCapital + totalPL;
-    const totalTrades = strategy.trades.length;
-    const openTradesCount = totalTrades - closedTrades.length;
-    const closedTradesCount = closedTrades.length;
-    const winningTrades = closedTrades.filter(t => t.status === 'win');
-    const losingTrades = closedTrades.filter(t => t.status === 'loss');
-    const breakevenTrades = closedTrades.filter(t => t.status === 'breakeven');
-    // Treat breakevens as wins when calculating win rate
-    const winRate = closedTrades.length > 0 ? ((winningTrades.length + breakevenTrades.length) / closedTrades.length) * 100 : 0;
-    
-    const riskPercent = strategy.initialCapital > 0 ? (totalRisk / strategy.initialCapital) * 100 : 0;
-    const gainOnCapital = strategy.initialCapital > 0 ? (totalPL / strategy.initialCapital) * 100 : 0;
-    const percentCapitalInvested = strategy.initialCapital > 0 ? (amountInvested / strategy.initialCapital) * 100 : 0;
-
-    // Calculate average holding period for winning and losing trades
-    const winningTradesWithCloseDate = winningTrades.filter(t => t.closeDate);
-    const losingTradesWithCloseDate = losingTrades.filter(t => t.closeDate);
-    
-    let avgHoldingPeriodWinning = 0;
-    if (winningTradesWithCloseDate.length > 0) {
-      const totalDaysWinning = winningTradesWithCloseDate.reduce((sum, trade) => {
-        const entryDate = new Date(trade.date).getTime();
-        const closeDate = new Date(trade.closeDate!).getTime();
-        const days = Math.floor((closeDate - entryDate) / (1000 * 60 * 60 * 24));
-        return sum + days;
-      }, 0);
-      avgHoldingPeriodWinning = totalDaysWinning / winningTradesWithCloseDate.length;
-    }
-    
-    let avgHoldingPeriodLosing = 0;
-    if (losingTradesWithCloseDate.length > 0) {
-      const totalDaysLosing = losingTradesWithCloseDate.reduce((sum, trade) => {
-        const entryDate = new Date(trade.date).getTime();
-        const closeDate = new Date(trade.closeDate!).getTime();
-        const days = Math.floor((closeDate - entryDate) / (1000 * 60 * 60 * 24));
-        return sum + days;
-      }, 0);
-      avgHoldingPeriodLosing = totalDaysLosing / losingTradesWithCloseDate.length;
-    }
-
-    // Calculate average portfolio impact for winning and losing trades
-    let avgPortfolioImpactWinning = 0;
-    if (winningTrades.length > 0 && strategy.initialCapital > 0) {
-      const totalImpactWinning = winningTrades.reduce((sum, trade) => {
-        const tradeStats = getTradeStats(trade);
-        const impact = (tradeStats.realizedPL / strategy.initialCapital) * 100;
-        return sum + impact;
-      }, 0);
-      avgPortfolioImpactWinning = totalImpactWinning / winningTrades.length;
-    }
-    
-    let avgPortfolioImpactLosing = 0;
-    if (losingTrades.length > 0 && strategy.initialCapital > 0) {
-      const totalImpactLosing = losingTrades.reduce((sum, trade) => {
-        const tradeStats = getTradeStats(trade);
-        const impact = (tradeStats.realizedPL / strategy.initialCapital) * 100;
-        return sum + impact;
-      }, 0);
-      avgPortfolioImpactLosing = totalImpactLosing / losingTrades.length;
-    }
-
-    return { 
-      totalPL, 
-      currentCapital, 
-      winRate, 
-      totalTrades, 
-      amountInvested, 
-      riskPercent, 
-      gainOnCapital, 
-      totalRisk,
-      openTradesCount,
-      closedTradesCount,
-      avgHoldingPeriodWinning,
-      avgHoldingPeriodLosing,
-      avgPortfolioImpactWinning,
-      avgPortfolioImpactLosing,
-      winningTradesCount: winningTrades.length,
-      losingTradesCount: losingTrades.length,
-      breakevenTradesCount: breakevenTrades.length,
-      percentCapitalInvested,
-      winStreak: calculateCurrentWinStreak(strategy.trades),
-      lossStreak: calculateCurrentLossStreak(strategy.trades)
-    };
-  }, [strategy]);
+  const stats = useMemo(() => 
+    calculatePortfolioStats(strategy.trades, { 
+      strategies: [strategy],
+      initialCapital: strategy.initialCapital,
+      includeStreaks: true,
+      includeHoldingPeriods: true,
+      includePortfolioImpacts: true
+    }), 
+  [strategy]);
 
   // Define all stats with their keys
   const allStats = useMemo(() => {
@@ -298,7 +205,7 @@ const StrategyView: React.FC<StrategyViewProps> = ({ strategy, onDeleteTrade, on
       { key: 'totalPL' as StrategyStatKey, title: 'Strategy P/L', value: formatCurrency(stats.totalPL, currency), icon: <BagOfMoneyIcon />, isPositive: stats.totalPL >= 0 },
       { key: 'gainOnCapital' as StrategyStatKey, title: '% Gain on Capital', value: `${stats.gainOnCapital.toFixed(2)}%`, icon: <TrendingUpIcon />, isPositive: stats.gainOnCapital >= 0, sublabel: portfolioImpactSublabel || undefined },
       { key: 'amountInvested' as StrategyStatKey, title: 'Amount Invested', value: formatCurrency(stats.amountInvested, currency), icon: <ScaleIcon />, isPositive: undefined, sublabel: `${stats.percentCapitalInvested.toFixed(2)}% of capital currently invested` },
-      { key: 'riskPercent' as StrategyStatKey, title: '% Risk', value: `${stats.riskPercent.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskPercent < 5, sublabel: formatCurrency(stats.totalRisk, currency) },
+      { key: 'riskPercent' as StrategyStatKey, title: '% Risk', value: `${stats.riskOnCapital.toFixed(2)}%`, icon: <ReceiptPercentIcon />, isPositive: stats.riskOnCapital < 5, sublabel: formatCurrency(stats.totalRisk, currency) },
       { key: 'winRate' as StrategyStatKey, title: 'Win Rate', value: `${stats.winRate.toFixed(1)}%`, icon: <TrendingUpIcon />, isPositive: stats.winRate >= 50, sublabel: winRateSublabel },
       { key: 'totalTrades' as StrategyStatKey, title: 'Total Trades', value: stats.totalTrades.toString(), icon: <CalculatorIcon />, isPositive: undefined, sublabel: holdingPeriodSublabel || undefined },
     ];

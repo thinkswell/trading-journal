@@ -3,6 +3,7 @@ import { Strategy, Trade, TradeStatus } from '../types';
 import TradeList from './TradeList';
 import StatCard from './StatCard';
 import { getTradeStats } from '../lib/tradeCalculations';
+import { calculatePortfolioStats } from '../lib/portfolioStats';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatCurrency } from '../lib/formatters';
 import { MoneyIcon } from './icons/MoneyIcon';
@@ -47,57 +48,9 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
     });
   }, [allTrades, assetFilter, statusFilter, strategyFilter]);
   
-  const stats = useMemo(() => {
-    let totalPL = 0;
-    let amountInvested = 0;
-    let totalRisk = 0;
-    
-    const closedTrades: Trade[] = [];
-    
-    filteredTrades.forEach(trade => {
-        const tradeStats = getTradeStats(trade);
-        if (tradeStats.isClosed) {
-            closedTrades.push(trade);
-            totalPL += tradeStats.realizedPL;
-        } else {
-            amountInvested += tradeStats.currentValue;
-            // Only add risk if it's actual risk (positive value)
-            // If trade is profitable (negative risk), treat as 0 risk
-            totalRisk += Math.max(0, tradeStats.totalRiskValue);
-        }
-    });
-
-    const totalTrades = filteredTrades.length;
-    const winningTrades = closedTrades.filter(t => t.status === 'win');
-    const losingTrades = closedTrades.filter(t => t.status === 'loss');
-    const breakevenTrades = closedTrades.filter(t => t.status === 'breakeven');
-
-    // Treat breakevens as wins when calculating win rate
-    const winRate = closedTrades.length > 0 ? ((winningTrades.length + breakevenTrades.length) / closedTrades.length) * 100 : 0;
-    
-    const totalWinsValue = winningTrades.reduce((sum, trade) => sum + getTradeStats(trade).realizedPL, 0);
-    const totalLossesValue = losingTrades.reduce((sum, trade) => sum + Math.abs(getTradeStats(trade).realizedPL), 0);
-    const profitFactor = totalLossesValue > 0 ? totalWinsValue / totalLossesValue : 0;
-
-    const totalCapital = strategies.reduce((acc, s) => acc + s.initialCapital, 0);
-    const riskOnCapital = totalCapital > 0 ? (totalRisk / totalCapital) * 100 : 0;
-    const gainOnCapital = totalCapital > 0 ? (totalPL / totalCapital) * 100 : 0;
-
-    return {
-      totalPL,
-      winRate,
-      totalTrades,
-      profitFactor,
-      amountInvested,
-      riskOnCapital,
-      gainOnCapital,
-      totalCapital,
-      totalRisk,
-      winningTradesCount: winningTrades.length,
-      losingTradesCount: losingTrades.length,
-      breakevenTradesCount: breakevenTrades.length
-    };
-  }, [filteredTrades, strategies]);
+  const stats = useMemo(() => 
+    calculatePortfolioStats(filteredTrades, { strategies }), 
+  [filteredTrades, strategies]);
   
   const strategyMap = useMemo(() => 
     strategies.reduce((acc, s) => {
