@@ -12,7 +12,7 @@ import Modal from './Modal';
 interface TradeFormProps {
   strategyId: string;
   existingTrade: Trade | null;
-  onSave: (trade: Trade) => void;
+  onSave: (trade: Trade) => Promise<void> | void;
   onCancel: () => void;
 }
 
@@ -81,6 +81,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isFormDirty, setIsFormDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [notesContent, setNotesContent] = useState<string>('');
   const notesContentRef = useRef<string>('');
@@ -703,7 +704,7 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
     setTrade(prev => ({...prev, partialExits: (prev.partialExits || []).filter((_, i) => i !== index)}));
   };
   
-  const performSave = () => {
+  const performSave = async () => {
     const sanitizedPyramids = (trade.pyramids || []).map(p => ({
         ...p,
         price: isNaN(p.price) ? 0 : p.price,
@@ -806,11 +807,11 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
     }
     // If statusManuallySet is true, keep the user's manual selection
 
-    onSave(fullTradeObject);
+    await onSave(fullTradeObject);
     setIsFormDirty(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Mark all fields as touched
@@ -838,7 +839,12 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
       return;
     }
 
-    performSave();
+    setIsSaving(true);
+    try {
+      await performSave();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleCancel = () => {
@@ -1161,10 +1167,10 @@ const TradeForm: React.FC<TradeFormProps> = ({ strategyId, existingTrade, onSave
                 className="w-full md:w-auto bg-[#2C2C2C] hover:bg-[#3f3f46] text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]">
           Cancel
         </button>
-        <button type="submit" 
+        <button type="submit" disabled={isSaving}
                 className="w-full md:w-auto bg-gradient-to-r from-[#6A5ACD] to-[#8b5cf6] hover:from-[#8b5cf6] hover:to-[#6A5ACD] text-white font-bold py-3 px-6 rounded-lg 
-                          shadow-sm shadow-[#6A5ACD]/10 hover:shadow-md hover:shadow-[#6A5ACD]/15 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]">
-          Save Trade
+                          shadow-sm shadow-[#6A5ACD]/10 hover:shadow-md hover:shadow-[#6A5ACD]/15 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:scale-100">
+          {isSaving ? 'Saving...' : 'Save Trade'}
         </button>
       </div>
 

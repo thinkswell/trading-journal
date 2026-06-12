@@ -405,7 +405,7 @@ const AppContent: React.FC = () => {
       logSync('Manual retry succeeded — hiding failure snackbar');
       window.setTimeout(() => setSyncSuccess(false), 3000);
     } else {
-      reportSyncFailure(pendingSync, result.error, 'manual-retry');
+      reportSyncFailure(pendingSync, undefined, 'manual-retry');
     }
   }, [pendingSync, clearSyncFailure, reportSyncFailure]);
 
