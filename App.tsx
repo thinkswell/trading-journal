@@ -703,14 +703,25 @@ const AppContent: React.FC = () => {
     return newNote.id;
   };
 
-  const handleSaveNote = (noteToSave: Note) => {
+  const handleSaveNote = async (noteToSave: Note) => {
     const updatedNote = { ...noteToSave, updatedAt: new Date().toISOString() };
     const newNotes = notes.map(n => n.id === updatedNote.id ? updatedNote : n);
-    saveNotes(newNotes);
+
+    setNotes(newNotes);
+
+    if (auth.currentUser) {
+      await upsertNoteDoc(updatedNote, auth.currentUser.uid, 'note-update');
+    }
   };
 
-  const handleDeleteNote = (noteId: string) => {
-    saveNotes(notes.filter(n => n.id !== noteId));
+  const handleDeleteNote = async (noteId: string) => {
+    const newNotes = notes.filter(n => n.id !== noteId);
+
+    setNotes(newNotes);
+
+    if (auth.currentUser) {
+      await deleteNoteDoc(noteId, auth.currentUser.uid, 'note-delete');
+    }
   };
 
   const handleUpdateProfile = async (newFirstName: string, newLastName: string) => {
