@@ -25,6 +25,8 @@ export interface Trade {
   strategyId: string;
   asset: string;
   date: string; // ISO string
+  updatedAt?: string;
+  deletedAt?: string;
   entryPrice: number;
   quantity: number;
   initialSl: number;
@@ -43,6 +45,8 @@ export interface Strategy {
   name: string;
   initialCapital: number;
   trades: Trade[];
+  updatedAt?: string;
+  deletedAt?: string;
 }
 
 export interface Note {
@@ -51,5 +55,15 @@ export interface Note {
   content: string;
   tags: string[];
   createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+}
+
+export type SyncEntityType = 'strategy' | 'trade' | 'note';
+
+export interface PendingWrite {
+  entity: SyncEntityType;
+  id: string;
+  op: 'set' | 'delete';
   updatedAt: string;
 }

@@ -4,9 +4,13 @@ import { useLocalStorage } from './hooks/useLocalStorage';
 import { mergeStrategies, mergeNotes } from './lib/firebaseSyncUtils';
 import {
   removeUndefinedValues,
-  writeStrategiesWithRetry,
-  writeNotesWithRetry,
   SYNC_FAILURE_MESSAGE,
+  upsertStrategyDoc,
+  upsertTradeDoc,
+  deleteStrategyDoc,
+  deleteTradeDoc,
+  upsertNoteDoc,
+  deleteNoteDoc,
   getSyncStats,
   logSync,
   logSyncWarn,
@@ -267,6 +271,8 @@ const AppContent: React.FC = () => {
   const [pendingSync, setPendingSync] = useState<Strategy[] | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
+  const strategiesRef = useRef<Strategy[]>(strategies);
+  const notesRef = useRef<Note[]>(notes);
   const pendingFirestoreDuringLoadRef = useRef<Strategy[] | null>(null);
   const pendingFirestoreDuringLoadNotesRef = useRef<Note[] | null>(null);
   const loadingRef = useRef(loading);
@@ -274,6 +280,14 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     loadingRef.current = loading;
   }, [loading]);
+
+  useEffect(() => {
+    strategiesRef.current = strategies;
+  }, [strategies]);
+
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
 
   const navigateTo = (view: string) => {
     setPreviousView(activeView);
@@ -310,23 +324,60 @@ const AppContent: React.FC = () => {
     async (strategiesToSync: Strategy[], context = 'save'): Promise<boolean> => {
       const user = auth.currentUser;
       if (!user) {
-        logSyncWarn('Skipping Firestore sync — user not authenticated (localStorage only)', {
-          context,
-          ...getSyncStats(strategiesToSync),
-        });
+        logSyncWarn('Skipping Firestore sync — user not authenticated (localStorage only)', { context, ...getSyncStats(strategiesToSync) });
         return false;
       }
 
-      logSync('Starting cloud sync', { context, userId: user.uid, ...getSyncStats(strategiesToSync) });
-      const result = await writeStrategiesWithRetry(strategiesToSync, user.uid, context);
-      if (result.success) {
-        clearSyncFailure(context);
-        logSync('Cloud sync completed successfully', { context, userId: user.uid });
-        return true;
-      }
+      const previousStrategies: Strategy[] = strategiesRef.current;
+      const previousMap = new Map<string, Strategy>(previousStrategies.map(strategy => [strategy.id, strategy]));
+      const nextMap = new Map<string, Strategy>(strategiesToSync.map(strategy => [strategy.id, strategy]));
+      logSync('Starting per-document strategy sync', { context, userId: user.uid, ...getSyncStats(strategiesToSync) });
 
-      reportSyncFailure(strategiesToSync, result.error, context);
-      return false;
+      try {
+        for (const [strategyId, nextStrategy] of nextMap) {
+          const previousStrategy = previousMap.get(strategyId);
+          if (!previousStrategy) {
+            await upsertStrategyDoc(nextStrategy, user.uid, context);
+            for (const trade of nextStrategy.trades) {
+              await upsertTradeDoc(trade, user.uid, context);
+            }
+            continue;
+          }
+
+          if (JSON.stringify(previousStrategy) !== JSON.stringify(nextStrategy)) {
+            await upsertStrategyDoc(nextStrategy, user.uid, context);
+          }
+
+          const previousTradeMap = new Map<string, Trade>(previousStrategy.trades.map(trade => [trade.id, trade]));
+          const nextTradeMap = new Map<string, Trade>(nextStrategy.trades.map(trade => [trade.id, trade]));
+
+          for (const [tradeId, nextTrade] of nextTradeMap) {
+            const previousTrade = previousTradeMap.get(tradeId);
+            if (!previousTrade || JSON.stringify(previousTrade) !== JSON.stringify(nextTrade)) {
+              await upsertTradeDoc(nextTrade, user.uid, context);
+            }
+          }
+
+          for (const tradeId of previousTradeMap.keys()) {
+            if (!nextTradeMap.has(tradeId)) {
+              await deleteTradeDoc(tradeId, user.uid, context);
+            }
+          }
+        }
+
+        for (const strategyId of previousMap.keys()) {
+          if (!nextMap.has(strategyId)) {
+            await deleteStrategyDoc(strategyId, user.uid, context);
+          }
+        }
+
+        clearSyncFailure(context);
+        logSync('Per-document strategy sync completed successfully', { context, userId: user.uid });
+        return true;
+      } catch (error) {
+        reportSyncFailure(strategiesToSync, error, context);
+        return false;
+      }
     },
     [clearSyncFailure, reportSyncFailure]
   );
@@ -345,10 +396,10 @@ const AppContent: React.FC = () => {
       ...getSyncStats(pendingSync),
     });
     setIsRetrying(true);
-    const result = await writeStrategiesWithRetry(pendingSync, auth.currentUser.uid, 'manual-retry');
+    const result = await syncStrategiesToCloud(pendingSync, 'manual-retry');
     setIsRetrying(false);
 
-    if (result.success) {
+    if (result) {
       clearSyncFailure('manual-retry');
       setSyncSuccess(true);
       logSync('Manual retry succeeded — hiding failure snackbar');
@@ -384,9 +435,9 @@ const AppContent: React.FC = () => {
           if (data.firstName) setFirstName(data.firstName);
           if (data.lastName) setLastName(data.lastName);
 
-          const syncResult = await writeStrategiesWithRetry(merged, user.uid, 'session-restore');
-          if (!syncResult.success) {
-            reportSyncFailure(merged, syncResult.error, 'session-restore');
+          const syncResult = await syncStrategiesToCloud(merged, 'session-restore');
+          if (!syncResult) {
+            reportSyncFailure(merged, undefined, 'session-restore');
           } else {
             clearSyncFailure('session-restore');
             logSync('Session restore complete — local and cloud are in sync');
@@ -395,9 +446,9 @@ const AppContent: React.FC = () => {
           logSync('New Firestore user — uploading local strategies', getSyncStats(local));
           const cleanedStrategies = removeUndefinedValues(local) as Strategy[];
           setStrategies(local);
-          const syncResult = await writeStrategiesWithRetry(cleanedStrategies, user.uid, 'new-user');
-          if (!syncResult.success) {
-            reportSyncFailure(local, syncResult.error, 'new-user');
+          const syncResult = await syncStrategiesToCloud(cleanedStrategies, 'new-user');
+          if (!syncResult) {
+            reportSyncFailure(local, undefined, 'new-user');
           } else {
             logSync('Writing default profile fields for new user');
             await setDoc(userDocRef, { firstName: '', lastName: '' }, { merge: true });
@@ -598,18 +649,30 @@ const AppContent: React.FC = () => {
       }
 
       logSync('Starting notes cloud sync', { context, userId: user.uid, noteCount: notesToSync.length });
-      const result = await writeNotesWithRetry(notesToSync, user.uid, context);
-      if (result.success) {
-        logSync('Notes cloud sync completed successfully', { context, userId: user.uid });
-        return true;
-      }
+      const previousNotes: Note[] = notesRef.current;
+      const previousMap = new Map<string, Note>(previousNotes.map(note => [note.id, note]));
+      const nextMap = new Map<string, Note>(notesToSync.map(note => [note.id, note]));
 
-      logSyncError('Notes cloud sync failed', result.error, {
-        context,
-        userId: user.uid,
-        noteCount: notesToSync.length,
-      });
-      return false;
+      try {
+        for (const [noteId, nextNote] of nextMap) {
+          const previousNote = previousMap.get(noteId);
+          if (!previousNote || JSON.stringify(previousNote) !== JSON.stringify(nextNote)) {
+            await upsertNoteDoc(nextNote, user.uid, context);
+          }
+        }
+
+        for (const noteId of previousMap.keys()) {
+          if (!nextMap.has(noteId)) {
+            await deleteNoteDoc(noteId, user.uid, context);
+          }
+        }
+
+        logSync('Per-document notes sync completed successfully', { context, userId: user.uid });
+        return true;
+      } catch (error) {
+        logSyncError('Notes cloud sync failed', error, { context, userId: user.uid, noteCount: notesToSync.length });
+        return false;
+      }
     },
     []
   );
@@ -686,35 +749,47 @@ const AppContent: React.FC = () => {
     }
   };
   
-  const handleSaveTrade = (tradeToSave: Trade) => {
+  const handleSaveTrade = async (tradeToSave: Trade) => {
+    const updatedTrade = { ...tradeToSave, updatedAt: new Date().toISOString() };
     const newStrategies = strategies.map(strategy => {
-        if (strategy.id === tradeToSave.strategyId) {
-            const tradeIndex = strategy.trades.findIndex(t => t.id === tradeToSave.id);
+        if (strategy.id === updatedTrade.strategyId) {
+            const tradeIndex = strategy.trades.findIndex(t => t.id === updatedTrade.id);
             const newTrades = [...strategy.trades];
             if (tradeIndex > -1) {
-                newTrades[tradeIndex] = tradeToSave;
+                newTrades[tradeIndex] = updatedTrade;
             } else {
-                newTrades.push(tradeToSave);
+                newTrades.push(updatedTrade);
             }
             return { ...strategy, trades: newTrades };
         }
         return strategy;
     });
-    saveStrategies(newStrategies);
+
+    setStrategies(newStrategies);
+
+    if (auth.currentUser) {
+      await upsertTradeDoc(updatedTrade, auth.currentUser.uid, 'trade-update');
+    }
+
     handleCloseTradeForm();
   };
 
-  const handleDeleteTrade = (tradeId: string, strategyId: string) => {
+  const handleDeleteTrade = async (tradeId: string, strategyId: string) => {
     const newStrategies = strategies.map(strategy => {
       if (strategy.id === strategyId) {
         return { ...strategy, trades: strategy.trades.filter(t => t.id !== tradeId) };
       }
       return strategy;
     });
-    saveStrategies(newStrategies);
+
+    setStrategies(newStrategies);
+
+    if (auth.currentUser) {
+      await deleteTradeDoc(tradeId, auth.currentUser.uid, 'trade-delete');
+    }
   }
 
-  const handleMoveTrade = (trade: Trade, targetStrategyId: string) => {
+  const handleMoveTrade = async (trade: Trade, targetStrategyId: string) => {
     // Find the trade in the current strategy
     const currentStrategy = strategies.find(s => s.id === trade.strategyId);
     if (!currentStrategy) return;
@@ -726,15 +801,20 @@ const AppContent: React.FC = () => {
         return { ...strategy, trades: strategy.trades.filter(t => t.id !== trade.id) };
       } else if (strategy.id === targetStrategyId) {
         // Add to target strategy with updated strategyId
-        const updatedTrade = { ...trade, strategyId: targetStrategyId };
+        const updatedTrade = { ...trade, strategyId: targetStrategyId, updatedAt: new Date().toISOString() };
         return { ...strategy, trades: [...strategy.trades, updatedTrade] };
       }
       return strategy;
     });
-    saveStrategies(newStrategies);
+
+    setStrategies(newStrategies);
+
+    if (auth.currentUser) {
+      await upsertTradeDoc({ ...trade, strategyId: targetStrategyId, updatedAt: new Date().toISOString() }, auth.currentUser.uid, 'trade-move');
+    }
   };
 
-  const handleCopyTrade = (trade: Trade, targetStrategyId: string) => {
+  const handleCopyTrade = async (trade: Trade, targetStrategyId: string) => {
     // Create a new trade with a new ID
     const newTradeId = `trade-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const newTrade: Trade = {
@@ -750,7 +830,12 @@ const AppContent: React.FC = () => {
       }
       return strategy;
     });
-    saveStrategies(newStrategies);
+
+    setStrategies(newStrategies);
+
+    if (auth.currentUser) {
+      await upsertTradeDoc(newTrade, auth.currentUser.uid, 'trade-copy');
+    }
   };
 
   const handleUpdateStrategy = (strategyId: string, name: string, initialCapital: number) => {
