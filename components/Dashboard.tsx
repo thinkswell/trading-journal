@@ -14,6 +14,7 @@ import { TrendingUpIcon } from './icons/TrendingUpIcon';
 import { CalculatorIcon } from './icons/CalculatorIcon';
 import { PinIcon } from './icons/PinIcon';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { buildDashboardExportPayload, downloadJsonExport, getDashboardExportFilename } from '../lib/exportData';
 
 interface DashboardProps {
   allTrades: Trade[];
@@ -122,7 +123,12 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
     } else {
       console.error("Could not find trade to delete from dashboard.");
     }
-  }
+  };
+
+  const handleExportDashboard = () => {
+    const payload = buildDashboardExportPayload(allTrades, strategies);
+    downloadJsonExport(payload, getDashboardExportFilename());
+  };
 
   // Define all stats with their keys
   const allStats = useMemo(() => {
@@ -190,10 +196,16 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrades, strategies, navigateTo
 
   return (
     <div className="space-y-6 md:space-y-8 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl md:text-5xl font-extrabold bg-gradient-to-r from-white via-[#E0E0E0] to-[#E0E0E0] bg-clip-text text-transparent">
           Dashboard
         </h1>
+        <button
+          onClick={handleExportDashboard}
+          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[rgba(255,255,255,0.08)] hover:bg-[rgba(255,255,255,0.14)] text-white font-semibold py-2.5 px-4 rounded-lg border border-[rgba(255,255,255,0.12)] transition-all duration-200"
+        >
+          Export JSON
+        </button>
       </div>
       
       {/* Desktop: Show all stats in grid */}
